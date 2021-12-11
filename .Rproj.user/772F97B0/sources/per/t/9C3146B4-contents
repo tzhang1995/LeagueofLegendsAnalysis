@@ -1,0 +1,279 @@
+---
+title: "League of Legends Analysis"
+output: html_notebook
+---
+# Introduction
+Like most league of legends players, I have a love / hate relationship with this game. I love the game to death, but playing it is an absolute nightmare. Feeding into this dynamic is partially the champion balance, or lack thereof, in this game which leads to frustrations on my part. In an effort to better understand champion balance I wanted to do two things:
+
+1. Establish a more robust champion win - rate statistic
+2. Apply unsupervised statistical learning techniques to model and understand team compositions
+
+The first thing I wanted to establish is a covariate champion win rate statistic. For example, truly degenerate combos like Lucian / Nami or Nidalee / Renekton make playing the game absolutely miserable, and I would like to show that such particular combinations have a greater effect on team win rate than either champion alone. 
+
+For the second, I look back at clash games that my friends and I have played, and I want to understand (beyond mistakes or skill disparity) compositional weaknesses we may or may not have drafted.
+
+To Do List:
+1. Add elo system to professional games
+
+# Acknowledgements
+A lot of this code is based off of reddit user u/WallabyKingdom's work, so shouts out for laying the groundwork for me to springboard off of.
+
+# Packages
+```{r message = F}
+library(tidyverse)
+library(jsonlite)
+library(httr)
+library(sjPlot)
+```
+
+# API Key (hidden)
+```{r include = F}
+api <- "RGAPI-38bce000-02c1-4809-988d-73385cb1e8ba"
+```
+
+# List for storing data
+```{r}
+# Don't run again or else the global environment will be cleared
+# matchData <- list()
+# data.temp <- list()
+```
+
+
+# Getting champion id keys and tidying data
+```{r}
+#champions.raw <- fromJSON("http://ddragon.leagueoflegends.com/cdn/11.10.1/data/en_US/championFull.json")
+
+champions <- as_tibble(do.call(rbind, champions.raw$data)) %>% 
+  select(id, key, tags, info) %>% 
+  mutate(info = map(
+    info,
+    .f = function(info){
+
+      info %>% 
+        as_tibble() %>%
+        return()
+
+    }
+  )) %>%
+  unnest(cols = c(id, key, info)) %>% 
+  mutate(key = as.integer(key))
+
+# Tags will be used downstream (maybe? hopefully... ?_?)
+head(champions)
+# Note Rell and Seraphine have no stats
+```
+
+# Retrieving Match Data
+## First prepare inputs
+```{r}
+data.temp$tier <- c("IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND")
+data.temp$division <- c("I", "II", "III", "IV")
+
+data.temp$tier_div <- expand_grid(data.temp$tier, data.temp$division) %>% 
+  rename(tier = 1, division = 2)
+```
+
+## Write function to extract summoner id's
+```{r}
+RIOTAPI_FUNCTIONS <- list()
+
+GET_JSON <- function(INPUT){
+  
+  output <- GET(INPUT) # Have to use httr::GET to properly parse this url
+  
+  output$content %>% 
+    rawToChar() %>% 
+    fromJSON() %>% 
+    return()
+  
+}
+
+RIOTAPI_FUNCTIONS$GET_ACCOUNTS <- function(tier, division){
+  
+  Sys.sleep(1.2)
+  url <- paste0("https://na1.api.riotgames.com/lol/league/v4/entries/RANKED_SOLO_5x5/", tier, "/", division, "?page=1&api_key=", api)
+  
+  GET_JSON(url) %>% 
+    return()
+  
+}
+
+RIOTAPI_FUNCTIONS$GET_PUUID <- function(summonerId){
+  
+  Sys.sleep(1.2)
+  url <- paste0("https://na1.api.riotgames.com/lol/summoner/v4/summoners/", summonerId,  "?api_key=", api)
+  
+  GET_JSON(url) %>% 
+    return()
+  
+}
+
+RIOTAPI_FUNCTIONS$GET_HISTORY <- function(puuid){
+  
+  Sys.sleep(1.2)
+  url <- paste0("https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/", puuid, "/ids?queue=420&start=0&count=20&api_key=", api)
+  
+  GET_JSON(url) %>% 
+    return()
+  
+}
+
+RIOTAPI_FUNCTIONS$GET_MATCH <- function(matchid){
+  
+  Sys.sleep(1.2)
+  url <- paste0("https://americas.api.riotgames.com/lol/match/v5/matches/", matchid, "?api_key=", api)
+  
+  GET_JSON(url) %>% 
+    return()
+  
+}
+```
+
+## Execute function
+```{r}
+# Doing this in steps because of the api query request limitations
+# First get summonerIds
+matchData$accounts.raw <- data.temp$tier_div %>%
+  mutate(
+    accounts = pmap(
+      .,
+      .f = RIOTAPI_FUNCTIONS$GET_ACCOUNTS
+    )
+  )
+```
+```{r}
+# Just retaining the summonerIds
+matchData$summonerIds <- accounts.raw %>% 
+  mutate(
+    accounts = map(
+      accounts,
+      .f = function(accounts){
+        accounts %>%
+          select(summonerId) %>%
+          return()
+      }
+    )
+  ) %>% 
+  unnest(cols = accounts)
+```
+```{r}
+# Get PUUID's now, need this to get match history
+matchData$accounts <- matchData$summonerIds %>% 
+  mutate(
+    puuid = map(
+      summonerId,
+      .f = RIOTAPI_FUNCTIONS$GET_PUUID
+    ),
+    puuid = map( # Probably separate this next time just in case maybe? It might work fine with the select function
+      puuid,
+      .f = function(puuid){
+        puuid %>% 
+          as_tibble() %>% 
+          select(puuid) %>% 
+          return()
+      }
+    )
+  ) %>%
+  unnest(puuid)
+
+head(matchData$accounts)
+```
+
+## Getting Match History from puuid
+```{r}
+matchData$match_history <- matchData$accounts %>% 
+  mutate(
+    matches = map(
+      puuid,
+      .f = RIOTAPI_FUNCTIONS$GET_HISTORY
+    )
+  )
+
+head(matchData$match_history)
+```
+```{r}
+matchData$matches <- matchData$match_history %>% 
+  mutate(
+    empty = map(
+      matches,
+      .f = is_empty
+    )
+  ) %>% 
+  unnest(cols = empty) %>%
+  filter(empty == FALSE) %>% 
+  unnest(cols = matches) %>% 
+  distinct(matches, .keep_all = T) %>% 
+  select(tier, division, match = matches)
+
+head(matchData$matches)
+```
+
+## Getting match information
+```{r}
+# splitting into two because of the api key expiration
+matchData$gameInfo.low <- matches %>% 
+  filter(tier %in% c("IRON", "BRONZE", "SILVER")) %>% 
+  mutate(
+    gameInfo = map(
+      match,
+      .f = RIOTAPI_FUNCTIONS$GET_MATCH
+    )
+  )
+
+matchData$gameInfo.high <- matches %>% 
+  filter(tier %in% c("GOLD", "PLATINUM", "DIAMOND")) %>% 
+  mutate(
+    gameInfo = map(
+      match,
+      .f = RIOTAPI_FUNCTIONS$GET_MATCH
+    )
+  )
+```
+
+## Tidying up data
+```{r}
+matchData$gameInfo.raw <- bind_rows(
+  matchData$gameInfo.low,
+  matchData$gameInfo.high
+) %>% 
+  mutate(
+    version = map(
+      gameInfo,
+      .f = function(gameInfo){
+        
+        gameInfo$info$gameVersion %>% 
+          return()
+        
+      }
+    ),
+    gameInfo = map(
+      gameInfo,
+      .f = function(gameInfo){
+        
+        gameInfo$info$participants %>% 
+          return()
+        
+      }
+    )
+  ) %>% 
+  unnest(cols = c("version", "gameInfo"))
+
+gameInfo <- matchData$gameInfo.raw %>% # Selecting only certain columns for simplicity
+  select(tier, division, version, match, assists, champExperience, champLevel, championId, championName, deaths, detectorWardsPlaced, firstBloodKill, goldEarned, goldSpent, individualPosition, item1, item2, item3, item4, item5, item6, kills, lane, role, totalDamageDealtToChampions, totalDamageDealt, totalTimeSpentDead, visionScore, wardsKilled, wardsPlaced, win) %>% 
+  mutate(
+    tier = factor(tier, levels = c("IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND")),
+    division = factor(division, levels = c("I", "II", "III", "IV")),
+    individualPosition = factor(individualPosition, levels = c("UTILITY", "BOTTOM", "MIDDLE", "JUNGLE", "TOP", "Invalid")),
+    lane = factor(lane, levels = c("BOTTOM", "MIDDLE", "JUNGLE", "TOP", "NONE")),
+    role = factor(role, levels= c("SUPPORT", "CARRY", "NONE", "SOLO", "DUO")),
+    win = factor(win, levels = c(FALSE, TRUE))
+  )
+```
+
+Finally we have our match info! This is an absurdly large data set, so I may prune it a bit. Setting Iron I, and Support / Bot Lane to be the baseline (Somewhat biased as an adc/support main).
+
+# Saving
+```{r}
+write.csv(gameInfo, "./data/matchData.csv")
+```
+

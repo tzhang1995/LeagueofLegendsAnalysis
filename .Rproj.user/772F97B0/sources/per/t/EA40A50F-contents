@@ -1,0 +1,6 @@
+---
+title: "Champion Statistics"
+output: html_notebook
+---
+
+This notebook outlines my process of generating models regarding champion statistics. This notebook is dependant on the data table gameInfo generated from DataExtraction.RMD.

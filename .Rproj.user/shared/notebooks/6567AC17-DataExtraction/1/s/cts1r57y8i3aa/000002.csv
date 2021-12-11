@@ -1,0 +1,4 @@
+"0","data.temp$tier <- c(""IRON"", ""BRONZE"", ""SILVER"", ""GOLD"", ""PLATINUM"", ""DIAMOND"")"
+"0","data.temp$division <- c(""I"", ""II"", ""III"", ""IV"")"
+"0",""
+"0","tier_div <- expand_grid(data.temp$tier, data.temp$division)"

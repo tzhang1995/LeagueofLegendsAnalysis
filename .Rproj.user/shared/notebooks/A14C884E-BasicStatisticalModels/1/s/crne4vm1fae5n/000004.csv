@@ -1,0 +1,8 @@
+"0","results$plots$visionScore <- plot_model(results$models$visionScore, type = ""pred"", grid = F)"
+"2","Data were 'prettified'. Consider using `terms=""visionScore [all]""` to get smooth plots.
+"
+"0","results$plots$visionScore"
+"1","$visionScore
+"
+"1","
+"

@@ -1,0 +1,6 @@
+"0","data.temp$damageDone <- gameInfo %>% "
+"0","  filter(individualPosition != ""Invalid"") %>% "
+"0","  select(individualPosition, totalDamageDealtToChampions, totalDamageDealt)"
+"0","data.temp$damageDone %>% "
+"0","  ggplot(aes(x = individualPosition, y = totalDamageDealt)) +"
+"0","  geom_boxplot()"

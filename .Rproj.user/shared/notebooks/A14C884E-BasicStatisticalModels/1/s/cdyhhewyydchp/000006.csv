@@ -1,0 +1,4 @@
+"0","data.temp$damageDone %>% "
+"0","  filter(individualPosition != ""Invalid"") %>% "
+"0","  group_by(individualPosition) %>% "
+"0","  summarize(avg_damage_champ = mean(totalDamageDealtToChampions), avg_damage_total = mean(totalDamageDealt))"

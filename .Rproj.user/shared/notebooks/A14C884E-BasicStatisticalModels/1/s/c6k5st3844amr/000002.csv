@@ -1,0 +1,4 @@
+"0","results$plots$damageDoneChamp <- plot_model(damageDoneChamp.fit, type = ""int"")"
+"2","Data were 'prettified'. Consider using `terms=""totalDamageDealtToChampions [all]""` to get smooth plots.
+"
+"0","results$plots$damageDoneChamp"

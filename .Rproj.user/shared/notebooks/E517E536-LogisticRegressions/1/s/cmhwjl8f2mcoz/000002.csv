@@ -1,0 +1,7 @@
+"0","plot_model(visionScore.fit.basic, type = ""pred"", grid = F) "
+"2","Data were 'prettified'. Consider using `terms=""visionScore [all]""` to get smooth plots.
+"
+"1","$visionScore
+"
+"1","
+"
