@@ -28,7 +28,7 @@ library(sjPlot)
 
 # API Key (hidden)
 ```{r include = F}
-api <- "RGAPI-38bce000-02c1-4809-988d-73385cb1e8ba"
+api <- "hidden"
 ```
 
 # List for storing data
