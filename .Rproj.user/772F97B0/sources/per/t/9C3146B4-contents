@@ -13,7 +13,9 @@ The first thing I wanted to establish is a covariate champion win rate statistic
 For the second, I look back at clash games that my friends and I have played, and I want to understand (beyond mistakes or skill disparity) compositional weaknesses we may or may not have drafted.
 
 To Do List:
-1. Add elo system to professional games
+1. Examine tree based classifiers and SVM
+2. Examine covariate win-rate statistics
+3. Apply deep learning to tease apart clusters of team compositions
 
 # Acknowledgements
 A lot of this code is based off of reddit user u/WallabyKingdom's work, so shouts out for laying the groundwork for me to springboard off of.
@@ -23,12 +25,11 @@ A lot of this code is based off of reddit user u/WallabyKingdom's work, so shout
 library(tidyverse)
 library(jsonlite)
 library(httr)
-library(sjPlot)
 ```
 
 # API Key (hidden)
 ```{r include = F}
-api <- "RGAPI-38bce000-02c1-4809-988d-73385cb1e8ba"
+# api <- "hidden"
 ```
 
 # List for storing data
@@ -45,22 +46,55 @@ api <- "RGAPI-38bce000-02c1-4809-988d-73385cb1e8ba"
 
 champions <- as_tibble(do.call(rbind, champions.raw$data)) %>% 
   select(id, key, tags, info) %>% 
-  mutate(info = map(
-    info,
-    .f = function(info){
-
-      info %>% 
-        as_tibble() %>%
-        return()
-
-    }
-  )) %>%
-  unnest(cols = c(id, key, info)) %>% 
-  mutate(key = as.integer(key))
-
+  mutate(
+    info = map(
+      info,
+      .f = function(info){
+  
+        info %>% 
+          as_tibble() %>%
+          return()
+  
+      }
+    ),
+    tag1 = map(
+      tags,
+      .f = function(tags){
+        
+        tags[[1]] %>% 
+          return()
+        
+      }
+    ),
+    tag2 = map(
+      tags,
+      .f = function(tags){
+        
+        if(length(tags) == 1){
+          
+          return(NA_character_)
+          
+        }else{
+          
+        tags[[2]] %>% 
+          return()
+          
+        }
+      }
+    )
+  ) %>%
+  unnest(cols = c(id, key, info, tag1, tag2)) %>% 
+  mutate(key = as.integer(key)) %>% 
+  select(!tags)
 # Tags will be used downstream (maybe? hopefully... ?_?)
 head(champions)
 # Note Rell and Seraphine have no stats
+```
+
+# Item Data 
+```{r}
+# Might use this later maybe not
+items.raw <- fromJSON("https://raw.githubusercontent.com/InFinity54/LoL_DDragon/master/latest/data/en_US/item.json")
 ```
 
 # Retrieving Match Data
@@ -259,7 +293,7 @@ matchData$gameInfo.raw <- bind_rows(
   unnest(cols = c("version", "gameInfo"))
 
 gameInfo <- matchData$gameInfo.raw %>% # Selecting only certain columns for simplicity
-  select(tier, division, version, match, assists, champExperience, champLevel, championId, championName, deaths, detectorWardsPlaced, firstBloodKill, goldEarned, goldSpent, individualPosition, item1, item2, item3, item4, item5, item6, kills, lane, role, totalDamageDealtToChampions, totalDamageDealt, totalTimeSpentDead, visionScore, wardsKilled, wardsPlaced, win) %>% 
+  select(tier, division, version, match, assists, champExperience, champLevel, championId, championName, deaths, detectorWardsPlaced, firstBloodKill, goldEarned, goldSpent, individualPosition, item1, item2, item3, item4, item5, item6, kills, lane, role, timePlayed, totalDamageDealtToChampions, totalDamageDealt, totalTimeSpentDead, visionScore, wardsKilled, wardsPlaced, win) %>% 
   mutate(
     tier = factor(tier, levels = c("IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND")),
     division = factor(division, levels = c("I", "II", "III", "IV")),

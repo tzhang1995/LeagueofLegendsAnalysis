@@ -1,4 +1,0 @@
-"0","tier <- c(""IRON"", ""BRONZE"", ""SILVER"", ""GOLD"", ""PLATINUM"", ""DIAMOND"")"
-"0","division <- c(""I"", ""II"", ""III"", ""IV"")"
-"0",""
-"0","tier_div <- expand_grid(tier, division)"

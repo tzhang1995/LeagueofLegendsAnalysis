@@ -3,7 +3,7 @@
     "path": "~/Personal Projects/LeagueofLegends/ChampionStatistics.Rmd",
     "project_path": "ChampionStatistics.Rmd",
     "type": "r_markdown",
-    "hash": "2391476101",
+    "hash": "3080186839",
     "contents": "",
     "dirty": false,
     "created": 1639194167815.0,
@@ -14,15 +14,15 @@
         "chunk_output_type": "inline",
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "5,169",
-        "scrollLine": "0"
+        "cursorPosition": "208,41",
+        "scrollLine": "201"
     },
-    "folds": "",
-    "lastKnownWriteTime": 1639253988,
+    "folds": "87|6|103|0|\n",
+    "lastKnownWriteTime": 1639445544,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1639253988387,
+    "last_content_update": 1639445544559,
     "read_only": false,
     "read_only_alternatives": []
 }

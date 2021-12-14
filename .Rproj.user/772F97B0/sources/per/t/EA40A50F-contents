@@ -3,4 +3,320 @@ title: "Champion Statistics"
 output: html_notebook
 ---
 
-This notebook outlines my process of generating models regarding champion statistics. This notebook is dependant on the data table gameInfo generated from DataExtraction.RMD.
+This notebook outlines my process of generating models regarding champion statistics. This notebook is dependent on the data table gameInfo generated from DataExtraction.RMD.
+
+# Packages
+```{r}
+library(plotly)
+library(RColorBrewer)
+library(data.table)
+library(cluster)
+```
+
+
+# Changing Data Structure and Making a List to Store Results
+```{r}
+gameInfo.win <- gameInfo %>% 
+  mutate(win = as.logical(win)) # Changing to logical to make future code easier
+# # Commenting out to make sure that I don't run over my cashed results
+# winrate <- list(
+#   tables = list(),
+#   plots = list()
+# )
+```
+
+# Overall Champion Winrate
+```{r}
+winrate$tables$base <- gameInfo.win %>% 
+  group_by(championName) %>% 
+  summarize(winrate = mean(win), games = n(), .groups = "drop")
+
+head(winrate$tables$base)
+```
+```{r}
+winrate$plots$base <- winrate$tables$base %>% 
+  left_join(
+    champions,
+    by = c("championName" = "id")
+  ) %>% 
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    color = ~tag1,
+    text = ~championName,
+    type = "scatter",
+    mode = "markers"
+  )
+
+winrate$plots$base
+# Akshan not present in the champions data gotten FROM the riot games api...RITO PLS. That's the NA in the plot...
+```
+Lux is very popular and has a high win rate. Also yeesh, Ryze has a really low win rate in Season 11. Maybe we can see a bit more when we include the tier of play. Weirdly a lot of marksmen in the very popular category. From inspection there might be three groups of champions:
+1. Balanced with medium play rate
+2. Balanced with high play rate
+3. Under tuned with low play rate
+My worry with a k-means is that the relative importance games played will overshadow the winrate statistic - maybe we can normalize the dataset.
+# K-means Clustering
+## Normalize Data Set and run kmeans models
+```{r}
+winrate$tables$base.normal <- winrate$tables$base %>% 
+  mutate(winrate = (winrate - mean(winrate))/sd(winrate), games = (games - mean(games))/sd(games))
+
+results$models$winplay$kmeans <- list() # List to store k-means models
+results$models$winplay$silhouette <- tibble(k = 2:9, sumofsq = rep(0,8))
+
+set.seed(1)
+for(i in 1:8){
+  
+  results$models$winplay$kmeans[[i]] <- kmeans(winrate$tables$base.normal %>% select(!championName), centers = i + 1, nstart = 50)
+  
+  results$models$winplay$silhouette$sumofsq[[i]] <- results$models$winplay$kmeans[[i]]$tot.withinss
+  
+}
+rm(i)
+results$models$winplay$silhouette %>% 
+  plot_ly(
+    x = ~k,
+    y = ~sumofsq,
+    type = "scatter",
+    mode = "lines+markers"
+  )
+```
+It would appear that 3 or 4 clusters is optimal - let's plot them:
+## Plotting
+### Setting up Data Table
+```{r}
+data.temp$clusterMembership <- tibble(base = rep(0,157))
+for(i in 1:length(results$models$winplay$kmeans)){
+  
+  data.temp$clusterMembership[,i] <- results$models$winplay$kmeans[[i]]$cluster
+  
+} 
+rm(i)
+data.temp$names <- str_c(rep("k = "), 2:9)
+winrate$tables$clustered <- bind_cols(
+    winrate$tables$base,
+    data.temp$clusterMembership %>% 
+      `names<-`(data.temp$names)
+  )
+
+winrate$tables$clustered
+```
+### Graphing Method 1
+```{r}
+# Will use this in the future, even if there is that ugly play button
+winrate$tables$clustered %>% 
+  pivot_longer(cols = 4:11, names_to = "n_clusters", values_to = "membership") %>%
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    colors = "Set3",
+    color = ~membership,
+    frame = ~n_clusters,
+    type = "scatter",
+    mode = "markers",
+    text = ~championName
+  ) %>% 
+  layout(
+    title = "Cluster Membership",
+    xaxis = list(title = "Games Played"),
+    yaxis = list(title = "Winrate")
+  ) %>% 
+  animation_opts(
+    frame = 100
+  )
+```
+
+### Graphing Method 2 (Really annoying but better plot)
+```{r}
+plotly_args <- list() # List to store plotly arguments
+plotly_args$traces <- list() # List of plots 
+
+for(i in 1:length(results$models$winplay$kmeans)){
+  
+  plotly_args$traces[[i]] <- list(
+    visible = F,
+    name = i+1,
+    x = winrate$tables$clustered$games,
+    y = winrate$tables$clustered$winrate,
+    text = winrate$tables$clustered$championName,
+    color = winrate$tables$clustered[,i+3][[1]],
+    colors = "Set3"
+  )
+  
+}
+
+plotly_args$traces[2][[1]]$visible = T # Manually setting the k=3 plot to be visible first
+
+plotly_args$steps <- list() # List to store objects populated by loop
+data.temp$fig <- plot_ly()
+
+for(i in 1:length(results$models$winplay$kmeans)){
+  
+  data.temp$fig <- add_markers(
+    data.temp$fig,
+    x = plotly_args$traces[i][[1]]$x,
+    y = plotly_args$traces[i][[1]]$y,
+    color = plotly_args$traces[i][[1]]$color,
+    colors = plotly_args$traces[i][[1]]$colors,
+    visible = plotly_args$traces[i][[1]]$visible,
+    name = plotly_args$traces[i][[1]]$name,
+    text = plotly_args$traces[i][[1]]$text,
+    type = "scatter",
+    mode = "markers",
+    showlegend = F
+  )
+  
+  plotly_args$step <- list(
+    args = list(
+      "visible",
+      rep(F, length(plotly_args$traces))
+    ),
+    method = "restyle",
+    label = plotly_args$traces[i][[1]]$name
+  )
+  
+  plotly_args$step$args[[2]][i] = T
+  plotly_args$steps[[i]] = plotly_args$step
+  
+}
+rm(i)
+
+winrate$plots$kmeans <- data.temp$fig %>% 
+  layout(
+    sliders = list(list(
+      active = 1, # 0 indexed in R, nice
+      currentvalue = list(prefix = "k = "),
+      steps = plotly_args$steps,
+      pad = list(t = 45)
+    ))
+  ) %>% 
+  layout(
+    title = "Cluster Membership",
+    xaxis = list(title = "Games Played"),
+    yaxis = list(title = "Winrate")
+  )
+
+winrate$plots$kmeans
+```
+The 3 cluster model was too general and the 4 cluster model identifies an under performing group but includes champions like Cassiopiea with a decent win rate (0.495) in this group. The 5 cluster model appears to capture this under performing group of champions without gross overestimating. This is presuming that there *is* indeed an underlying structure to this space which may not be the case. It may be the case that a more complex space may yield more representative results as k-means clustering uses euclidean distance. 
+
+It's also unclear whether or not the low play rate is a cause of the low win rate or because of champion imbalance. Optimal prescriptive balance changes might simply be a simple binary classifier in which champions below a certain win rate need buffs and the converse for high win rate champions.
+
+So low play rate might be caused by a few factors:
+1. The champion is weak
+  A. The champion cannot carry even when given gold
+  B. They have a hard time acquiring gold
+2. 
+
+# Adding Tier Information
+```{r}
+winrate$tables$tier <- gameInfo.win %>% 
+  group_by(championName, tier) %>% 
+  summarize(winrate = mean(win), games = n(), .groups = "drop")
+
+head(winrate$tables$tier)
+```
+```{r}
+winrate$plots$tier <- winrate$table$tier %>% 
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    color = ~tier,
+    text = ~championName,
+    type = "scatter",
+    mode = "markers"
+  )
+
+winrate$plots$tier
+```
+Well we can for sure see regression towards the mean with a higher number of games wit ha few notable exceptions:
+1. Rell is popping off in Diamond but likely variance due to low game number. Similar with Ornn in Iron. 
+2. One notable outlier that can be viewed instantly is Iron Yuumi, with a winrate of 0.434 which matches intuition. 
+3. Similarly, Ryze, Zoe, and Gwen have horrible win rates in bronze for the number of games. However this also might be due to oversampling of particular players in the scraping process. 
+
+A few ADC's also grab my attention - Ezreal and Lucian seem to have an especially low winrate in Diamond. Might be worth investigating.
+
+# Covariate Champion Winrate
+Are there any particular combinations of champions which are truly degenerate (see Master Yi - Taric funneling which was a gigantic issue in previous seasons)
+## Temporary Table to Make Funciton More Efficient
+```{r}
+data.temp$champTeams <- gameInfo.win %>% 
+  select(match, win, championName) %>%
+  group_by(match, win) %>% 
+  mutate(champion = row_number()) %>% 
+  pivot_wider(
+    names_from = champion,
+    values_from = championName
+  ) %>% 
+  mutate(team = str_c("_",`2`,`3`,`4`,`5`,"_", sep = "_")) %>% 
+  select(match, win, champion = `1`, team) %>% 
+  ungroup()
+```
+## Executing Function
+```{r}
+winrate$tables$covariate.temp <- expand.grid(
+  champions$id,
+  champions$id
+) %>%
+  apply(., 1, sort) %>% # Removing rows symmetrically, no need to double search
+  t() %>% 
+  unique() %>% 
+  as_tibble() %>% 
+  rename(Champ1 = V1, Champ2 = V2) %>% 
+  filter(Champ1 != Champ2) # Removing diagonal elements
+
+# This takes SO damn long to run, I wonder if there is a better way to do this...
+# Doing this in two steps to avoid running long functions again
+# winrate$tables$covariate.temp2 <- winrate$tables$covariate.temp %>%
+#   mutate(
+#     gameList = pmap(
+#       .,
+#       .f = function(Champ1, Champ2, TABLE = data.temp$champTeams){
+# 
+#         TABLE %>%
+#           group_by(match, win) %>%
+#           filter(champion == Champ1) %>% # Okay this is way faster but still turbo slow
+#           filter(str_detect(team, paste0("_", Champ2, "_"))) %>% 
+#           ungroup() %>%
+#           return()
+# 
+#       }
+#     )
+#   )
+
+winrate$tables$covariate <- winrate$tables$covariate.temp2 %>% 
+  mutate(
+    data = map(
+      gameList,
+      .f = function(gameList){
+        
+        gameList %>% 
+          summarize(winrate = mean(win), games = n()) %>% 
+          return()
+        
+      }
+    )
+  ) %>% 
+  unnest(cols = c(data))
+
+# Making a new table to make searching particular champion pairs easier
+winrate$tables$covariate.search <- bind_rows(
+  winrate$tables$covariate,
+  winrate$tables$covariate %>% 
+    rename(Champ2 = 1, Champ1 = 2)
+)
+
+
+winrate$plots$covariate <- winrate$tables$covariate %>% 
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    text = ~paste(Champ1, Champ2, sep = " "),
+    type = "scatter",
+    mode = "markers"
+  )
+
+winrate$plots$covariate 
+```
+Probably not enough games to make any predictions - with 155*154 champion duo combinations, would need a lot more data to have a decent sample of all combinations.

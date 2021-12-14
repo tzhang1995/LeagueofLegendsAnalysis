@@ -3,7 +3,13 @@ title: "Basic Statistical Models"
 output: html_notebook
 ---
 
-This notebook outlines my process of generating basic statistical models and exploratory data analysis. This notebook is dependant on the data table gameInfo generated from DataExtraction.RMD.
+This notebook outlines my process of generating basic statistical models and exploratory data analysis. This notebook is dependent on the data table gameInfo generated from DataExtraction.RMD.
+
+# Packages
+```{r}
+library(sjPlot)
+```
+
 # Empty Lists to Store Results
 ```{r}
 # Don't run this again or else you'll clear the data, commented out to avoid this problem :<
@@ -14,6 +20,7 @@ This notebook outlines my process of generating basic statistical models and exp
 ```
 
 # Vision Score
+Let's examine the effect of vision score on predicted probability of winning. If the theory is true that controlling vision is integral for winning (which by all intuition it should be) then higher vision score should increase the log odds of victory.
 ## Just Vision Score
 ```{r}
 results$models$visionScore <- glm(win ~ visionScore, family = "binomial", data = gameInfo)
@@ -25,8 +32,7 @@ results$plots$visionScore <- plot_model(results$models$visionScore, type = "pred
 
 results$plots$visionScore
 ```
-
-So for every point of vision score, the log odds of winning increases by 0.0096 and at a vision score of ~23.4, your win chance is 50%. But what if we wanted to include role (adc, support, etc.)? Is it more important for a particular role to have a high vision score? It should be noted that the average and standard deviation of vision score is 23.49 and 19.96 respectively, so the large vision scores above 100 are very rare and the win rate should not be taken as accurate.
+So as expected, increasing vision score *does* appear to increase your chances of victor. So for every point of vision score, the log odds of winning increases by 0.0096 and at a vision score of ~23.4, your win chance is 50%. But what if we wanted to include role (adc, support, etc.)? Is it more important for a particular role to have a high vision score? It should be noted that the average and standard deviation of vision score is 23.49 and 19.96 respectively, so the large vision scores above 100 are very rare and the win rate should not be taken as accurate.
 
 ## Include Role
 ```{r}
@@ -39,9 +45,15 @@ results$plots$visionScore.role <- plot_model(results$models$visionScore.role, ty
 
 results$plots$visionScore.role
 ```
+As it turns out, having laners / junglers that ward is a very strong indicator of success. If your laners / jungler have a vision score of less than 25, they are *actively* trolling. Let's see if we can add time as a covariate to have a more prescriptive intervention that can be made for league players.
 
-As it turns out, having laners / junglers that ward is a very strong indicator of success. If your laners have a vision score of less than 25, they are *actively* trolling. There is probably some covariance with game time, but such a model would be very hard to interpret.
- 
+## Include Game Time
+```{r}
+results$models$visionScore.role.time <- glm(win ~ visionScore*individualPosition*timePlayed, data = gameInfo %>% filter(individualPosition != "Invalid"), family = "binomial")
+
+summary(results$models$visionScore.role.time)
+```
+
 # Gold Percentage by Position
 It's a common idea that the ADC role has been considered useless for this season - let's see what the data has to say about that!
 ```{r}
@@ -60,7 +72,7 @@ results$plots$goldPercent <- plot_model(results$models$goldPercent, type = "int"
 results$plots$goldPercent 
 ```
 
-So it would appear that having your carry fed is actually a very strong indicator of win percentage. So why might people believe that ADC is useless? Let's add tier as a covariate and see what we see.
+So it would appear that having your carry fed is actually a very strong indicator of win percentage. So why might people believe that ADC is useless? Let's add tier as a covariate and see what we see. (Also as a note, winrate drops off a cliff if support steals all the gold so good to know...as a support main)
 ## Add tier
 ```{r}
 results$models$goldPercent.tier <- glm(win~goldEarned*individualPosition*tier, data = data.temp$goldPercent %>% filter(individualPosition != "Invalid"), family = "binomial")

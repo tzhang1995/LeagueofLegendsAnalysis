@@ -3,7 +3,7 @@
     "path": "~/Personal Projects/LeagueofLegends/DataExtraction.RMD",
     "project_path": "DataExtraction.RMD",
     "type": "r_markdown",
-    "hash": "780348279",
+    "hash": "3149073246",
     "contents": "",
     "dirty": false,
     "created": 1638985779407.0,
@@ -14,15 +14,15 @@
         "chunk_output_type": "inline",
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "260,22",
-        "scrollLine": "241"
+        "cursorPosition": "296,9",
+        "scrollLine": "284"
     },
-    "folds": "",
-    "lastKnownWriteTime": 1639256584,
+    "folds": "51|26|57|6|\n61|26|66|6|\n70|26|82|6|\n",
+    "lastKnownWriteTime": 1639446385,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1639256584184,
+    "last_content_update": 1639446385830,
     "read_only": false,
     "read_only_alternatives": []
 }

@@ -1,3 +1,0 @@
-"0","plot_model(goldPercent.fit, type = ""int"", terms=""goldEarned [all]"")"
-"2","Data were 'prettified'. Consider using `terms=""goldEarned [all]""` to get smooth plots.
-"

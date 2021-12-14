@@ -1,4 +1,0 @@
-"0","results$plots$visionScore.role <- plot_model(results$models$visionScore.role, type = ""int"")"
-"2","Data were 'prettified'. Consider using `terms=""visionScore [all]""` to get smooth plots.
-"
-"0","results$plots$visionScore.role"
