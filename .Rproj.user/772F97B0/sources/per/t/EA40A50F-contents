@@ -300,15 +300,19 @@ GET_WR_MODEL <- function(table){
   
 }
 
-GET_WR_PLOTS <- function(table){
-  # browser()
-  role = table$individualPosition[[1]]
+GET_WR_PLOTS <- function(ROLE, table, table2 = winrate$tables$highlow, ...){
+  
   models <- list()
   preds <- list()
-  goldRange <- tibble(goldEarned = seq(0, .75, length.out = 75))
+  goldRange <- data.frame(goldEarned = seq(0, .75, length.out = 75))
   
   champions <- table %>% 
-    distinct(championName)
+    distinct(championName) %>% 
+    left_join(
+      table2, 
+      by = "championName"
+    )
+
   
   plot <- plot_ly()
   
@@ -316,26 +320,42 @@ GET_WR_PLOTS <- function(table){
     
     models[[i]] <- table %>% 
       filter(championName == champions$championName[[i]]) %>% 
+      filter(individualPosition == ROLE) %>% 
       glm(formula = win~goldEarned, family = "binomial", data = .)
     
-    preds[i] <- predict(models[[i]], new.data = goldRange)
+    preds[[i]] <- predict.glm(models[[i]], type = "response", newdata = goldRange)
     
+    if(champions$win[[i]] == "high"){
+      
     plot <- plot %>% 
       add_trace(
         x = goldRange$goldEarned,
-        y = preds[i],
+        y = preds[[i]],
         type = "scatter",
-        mode = "lines+markers",
+        mode = "lines",
         name = champions$championName[[i]]
       )
+    } else if(champions$win[[i]] == "low"){
+      
+      plot <- plot %>% 
+      add_trace(
+        x = goldRange$goldEarned,
+        y = preds[[i]],
+        type = "scatter",
+        mode = "lines",
+        name = champions$championName[[i]],
+        line = list(dash = "dash")
+      )
+      
+    }
     
   }
   
   plot <- plot %>% 
     layout(
-      xaxis = "Gold Percent",
-      yaxis = "Predicted Probability of Winning",
-      title = paste0("Top and Bottom 3 Winrate Champions (", role, ")")
+      xaxis = list(title = "Gold Percent"),
+      yaxis = list(title ="Predicted Probability of Winning"),
+      title = paste0("Top and Bottom 3 Winrate Champions (", str_to_title(ROLE), ")")
     )
   
   return(plot)
@@ -346,7 +366,7 @@ GET_WR_PLOTS <- function(table){
 ## Observing Winrate when Controlling for Gold Percent
 ```{r}
 # Doing this in two steps to save the hassle of rerunning when troubleshooting
-winrate$tables$WR_highlow.temp <- tibble(
+data.temp$WR_highlow.temp <- tibble(
   ROLE = winrate$tables$highlow %>% 
     distinct(individualPosition) %>% 
     {.$individualPosition}
@@ -362,20 +382,17 @@ winrate$tables$WR_highlow.temp <- tibble(
     )
   )
 
-winrate$tables$WR_highlow <- winrate$tables$WR_highlow.temp %>% 
+winrate$tables$WR_highlow <- data.temp$WR_highlow.temp %>% 
   mutate(
-    plot = map(
-      table,
+    plot = pmap(
+      .,
       .f = GET_WR_PLOTS
     )
   )
 
-winrate$tables$WR_highlow.temp
+winrate$tables$WR_highlow$plot
 ```
 
-```{r}
-
-```
 
 
 # Covariate Champion Winrate
