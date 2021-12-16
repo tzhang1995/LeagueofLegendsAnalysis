@@ -25,6 +25,7 @@ A lot of this code is based off of reddit user u/WallabyKingdom's work, so shout
 library(tidyverse)
 library(jsonlite)
 library(httr)
+library(rvest)
 ```
 
 # API Key (hidden)
@@ -90,6 +91,56 @@ champions <- as_tibble(do.call(rbind, champions.raw$data)) %>%
 head(champions)
 # Note Rell and Seraphine have no stats
 ```
+
+# Mobalytics Champions
+```{r}
+# I noticed Akshan wasn't present, so I'm going to make a secondary champion list by scraping a Mobalytics page
+# Note this relys on scraping data first so this chunk is out of sequential order
+mobalytics.raw <- read_html("https://app.mobalytics.gg/lol/champions")
+
+data.temp$championNames <- mobalytics.raw %>% # I can scrape the actual league matches
+  html_elements(".m-1xem6pd") %>% 
+  html_text()
+
+data.temp$championDifficulty <- mobalytics.raw %>% 
+  html_elements("p") %>% 
+  html_text() %>% 
+  {.[2:158]}
+
+data.temp$championTag <- mobalytics.raw %>% 
+  html_elements(".m-1br68c5") %>%
+  html_attr(name = "alt")
+
+champions.scraped <- tibble(
+  name = gameInfo %>% 
+    distinct(championName) %>% 
+    mutate(
+      championName = case_when(
+        championName == "MonkeyKing"  ~  "Wukong", 
+        TRUE                          ~  championName # For whatever reason riot calls wukong monkey king which messes with the ordering of the mobalytics data
+      )
+    ) %>% 
+    arrange(championName) %>% 
+    {.$championName},
+  tag = data.temp$championTag,
+  difficulty = data.temp$championDifficulty %>% 
+    factor(levels = c("Easy", "Average", "Hard", "Severe"))
+) %>% 
+  mutate(
+      name = case_when(
+        name == "Wukong"  ~  "MonkeyKing",
+        TRUE              ~  name
+    )
+  ) %>% 
+  arrange(name)
+
+# champions %>% 
+#   filter(
+#     !(id %in% champions.scraped$name)
+#   )
+# Seriously, why is fiddlesticks the only one what is different, whatever doesn't matter, the info gotten from the .json is clearly outdated.
+```
+
 
 # Item Data 
 ```{r}
@@ -300,8 +351,11 @@ gameInfo <- matchData$gameInfo.raw %>% # Selecting only certain columns for simp
     individualPosition = factor(individualPosition, levels = c("UTILITY", "BOTTOM", "MIDDLE", "JUNGLE", "TOP", "Invalid")),
     lane = factor(lane, levels = c("BOTTOM", "MIDDLE", "JUNGLE", "TOP", "NONE")),
     role = factor(role, levels= c("SUPPORT", "CARRY", "NONE", "SOLO", "DUO")),
+    timePlayed = timePlayed / 60,
     win = factor(win, levels = c(FALSE, TRUE))
   )
+
+gameInfo.noInvalid <- gameInfo %>% filter(individualPosition != "Invalid")
 ```
 
 Finally we have our match info! This is an absurdly large data set, so I may prune it a bit. Setting Iron I, and Support / Bot Lane to be the baseline (Somewhat biased as an adc/support main).

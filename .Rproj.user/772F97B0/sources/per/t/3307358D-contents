@@ -7,7 +7,9 @@ This notebook outlines my process of generating basic statistical models and exp
 
 # Packages
 ```{r}
+library(tidyverse)
 library(sjPlot)
+library(plotly)
 ```
 
 # Empty Lists to Store Results
@@ -36,7 +38,7 @@ So as expected, increasing vision score *does* appear to increase your chances o
 
 ## Include Role
 ```{r}
-results$models$visionScore.role <- glm(win ~ visionScore*individualPosition, family = "binomial", data = gameInfo %>% filter(individualPosition != "Invalid"))
+results$models$visionScore.role <- glm(win ~ visionScore*individualPosition, family = "binomial", data = gameInfo.noInvalid)
 
 summary(results$models$visionScore.role)
 ```
@@ -45,14 +47,96 @@ results$plots$visionScore.role <- plot_model(results$models$visionScore.role, ty
 
 results$plots$visionScore.role
 ```
-As it turns out, having laners / junglers that ward is a very strong indicator of success. If your laners / jungler have a vision score of less than 25, they are *actively* trolling. Let's see if we can add time as a covariate to have a more prescriptive intervention that can be made for league players.
-
+As it turns out, having laners / junglers that ward is a very strong indicator of success. If your laners / jungler have a vision score of less than 25, they are *actively* trolling. Adding time is too big to handle on my local machine - instead I will divide the data into segments and run the individual logistic regressions. I assume since the effect of vision score is near uniform across the non support roles that a model of just the support role and just one other role should be sufficient.
 ## Include Game Time
 ```{r}
-results$models$visionScore.role.time <- glm(win ~ visionScore*individualPosition*timePlayed, data = gameInfo %>% filter(individualPosition != "Invalid"), family = "binomial")
+results$models$visionScore.time.support <- glm(win ~ visionScore*timePlayed, data = gameInfo %>% filter(individualPosition == "UTILITY"), family = "binomial")
 
-summary(results$models$visionScore.role.time)
+results$models$visionScore.time.nonSupport <- glm(win ~ visionScore*timePlayed, data = gameInfo %>% filter(individualPosition == "BOTTOM"), family = "binomial")
+
+summary(results$models$visionScore.time.support)
+summary(results$models$visionScore.time.nonSupport)
 ```
+## Constructing a Table to Plot Logistic Regression Surface
+### Function to Generate Data in the Format Required by Plotly
+```{r}
+data.temp$visionScore <- expand_grid(
+    visionScore = seq(min(gameInfo$visionScore), mean(gameInfo$visionScore) + 4*sd(gameInfo$visionScore), length.out = 50),
+    timePlayed = seq(5, 60, length.out = 50)
+  ) 
+
+# NEXT TIME USE THE OUTER FUNCTION BUT OK
+GET_SURFACE <- function(MODEL, TABLE = data.temp$visionScore){
+  
+  table.temp <- TABLE %>% 
+    mutate(
+      p_win = 1-exp(MODEL$coefficients[[1]]  + MODEL$coefficients[[2]]*visionScore + MODEL$coefficients[[3]]*timePlayed + MODEL$coefficients[[4]]*visionScore*timePlayed)/(1 + exp(MODEL$coefficients[[1]]  + MODEL$coefficients[[2]]*visionScore + MODEL$coefficients[[3]]*timePlayed + MODEL$coefficients[[4]]*visionScore*timePlayed)
+      )
+    )
+  
+  output.raw <- list()
+  
+  for(i in 0:49){
+    
+    output.raw[[i+1]] <- table.temp$p_win[(50*i+1):((i+1)*50)]
+    
+  }
+  
+  output <- rbind(output.raw[1:50]) %>% 
+    return()
+  
+}
+
+data.temp$visionScore.support <- GET_SURFACE(results$models$visionScore.time.support)
+data.temp$visionScore.nonSupport <- GET_SURFACE(results$models$visionScore.time.nonSupport)
+```
+
+```{r}
+results$plots$visionScore.time.support <- plot_ly(
+  x = seq(min(gameInfo$visionScore), mean(gameInfo$visionScore) + 4*sd(gameInfo$visionScore), length.out = 50),
+  y = seq(5, 60, length.out = 50),
+  z = data.temp$visionScore.support,
+  type = "surface"
+) %>% 
+  layout(
+    scene = list(
+      xaxis = list(title = "Vision Score"),
+      yaxis = list(title = "Game Time (Mins)"),
+      zaxis = list(title = "Probability of winning")
+    )
+  )
+
+results$plots$visionScore.time.support
+```
+```{r}
+results$plots$visionScore.time.nonSupport <- plot_ly(
+  x = seq(min(gameInfo$visionScore), mean(gameInfo$visionScore) + 4*sd(gameInfo$visionScore), length.out = 50),
+  y = seq(5, 60, length.out = 50),
+  z = data.temp$visionScore.nonSupport,
+  type = "surface"
+) %>% 
+  layout(
+    scene = list(
+      xaxis = list(title = "Vision Score"),
+      yaxis = list(title = "Game Time (Mins)"),
+      zaxis = list(title = "Probability of winning")
+    )
+  )
+
+results$plots$visionScore.time.nonSupport
+```
+## Calculating the Contour of 50% Win Rate
+```{r}
+data.temp$contour.visionScore.support <- tibble(gameTime = 1:12*5) %>% 
+  mutate(visionScore = (-results$models$visionScore.time.support$coefficients[[1]]-results$models$visionScore.time.support$coefficients[[3]]*gameTime)/(results$models$visionScore.time.support$coefficients[[2]] + results$models$visionScore.time.support$coefficients[[4]]*gameTime))
+data.temp$contour.visionScore.nonSupport <- tibble(gameTime = 1:12*5) %>% 
+  mutate(visionScore = (-results$models$visionScore.time.nonSupport$coefficients[[1]]-results$models$visionScore.time.nonSupport$coefficients[[3]]*gameTime)/(results$models$visionScore.time.nonSupport$coefficients[[2]] + results$models$visionScore.time.nonSupport$coefficients[[4]]*gameTime))
+
+data.temp$contour.visionScore.support
+data.temp$contour.visionScore.nonSupport
+```
+
+So for a support, you want your vision score to be around 25 at 20 minutes, 45 at 30 minutes, and 80 at 40 minutes to have a 50% chance of winning. For a non-support, you want your vision score to be around 10 at 20 minutes, 20 at 30 minutes, and 30 at 40 minutes.
 
 # Gold Percentage by Position
 It's a common idea that the ADC role has been considered useless for this season - let's see what the data has to say about that!
@@ -71,7 +155,6 @@ results$plots$goldPercent <- plot_model(results$models$goldPercent, type = "int"
 
 results$plots$goldPercent 
 ```
-
 So it would appear that having your carry fed is actually a very strong indicator of win percentage. So why might people believe that ADC is useless? Let's add tier as a covariate and see what we see. (Also as a note, winrate drops off a cliff if support steals all the gold so good to know...as a support main)
 ## Add tier
 ```{r}
@@ -84,10 +167,11 @@ results$plots$goldPercent.tier <- plot_model(results$models$goldPercent.tier, ty
 
 results$plots$goldPercent.tier[[4]]
 ```
-Results are unclear, for lower elo's *in general*, gold percentage is less important on ADC but it's not super clear based on the the variance in Silver and Platinum. Interestingly, jungle seems to be a hard carry role in higher elos. Might be because of the champion choice. This will be examined later.
+Results are unclear, for lower elo's *in general*, gold percentage is less important on ADC but it's not super clear based on the the variance in Silver and Platinum. Interestingly, jungle seems to be more of a carry role in higher elos. Might be because of the champion choice. This will be examined later.
+
 # Total Damage Done
 ```{r}
-results$models$damageDoneChamp <- glm(win~totalDamageDealtToChampions*individualPosition, data = gameInfo %>% filter(individualPosition != "Invalid"), family = "binomial")
+results$models$damageDoneChamp <- glm(win~totalDamageDealtToChampions*individualPosition, data = gameInfo.noInvalid, family = "binomial")
 
 summary(results$models$damageDoneChamp)
 ```
@@ -99,8 +183,7 @@ results$plots$damageDoneChamp
 Not much difference based on whoever does damage to champion aside from support.
 ## Average Total Damage and Damage to Champions based on Role
 ```{r}
-data.temp$damageDone <- gameInfo %>% 
-  filter(individualPosition != "Invalid") %>% 
+data.temp$damageDone <- gameInfo.noInvalid %>% 
   select(individualPosition, totalDamageDealtToChampions, totalDamageDealt)
 data.temp$damageDone %>% 
   ggplot(aes(x = individualPosition, y = totalDamageDealt)) +
@@ -108,8 +191,7 @@ data.temp$damageDone %>%
 data.temp$damageDone %>%  
   ggplot(aes(x = individualPosition, y = totalDamageDealtToChampions)) +
   geom_boxplot()
-data.temp$damageDone %>% 
-  filter(individualPosition != "Invalid") %>% 
+data.temp$damageDone %>%  
   group_by(individualPosition) %>% 
   summarize(avg_damage_champ = mean(totalDamageDealtToChampions), avg_damage_total = mean(totalDamageDealt))
 ```
@@ -124,10 +206,9 @@ Not really useful, sample size is so large which makes any small difference sign
 ```{r}
 data.temp$championDifficulty <- gameInfo %>% 
   left_join(
-    champions %>% 
-      filter(!(id %in% c("Seraphine", "Rell"))) %>%  # These two champions have no associated difficulty
-      select(difficulty, key),
-    by = c("championId" = "key")
+    champions.scraped %>% 
+      select(name, difficulty),
+    by = c("championName" = "name")
   ) %>% 
   filter(!is.na(difficulty))
 
@@ -135,5 +216,11 @@ results$models$championDifficulty <- glm(win ~ difficulty*tier, data = data.temp
 
 summary(results$models$championDifficulty)
 ```
-Hard to say - I might have expected that win rate of difficult champions would increase, hard to say - difficulty does not take into account meta and other interactions. Will look at champion statistics next.
+```{r}
+results$plots$championDifficulty <- plot_model(results$models$championDifficulty, type = "int")
 
+results$plots$championDifficulty
+```
+Hard to say - I might have expected that win rate of difficult champions would increase when we get to higher ranks. Difficulty however, does not take into account meta and other interactions. The model generated doesn't have the greatest significance so interpretability is limited. It is striking however, the general trend of winrate decreasing with the increase of champion difficulty. Maybe if we interpret difficulty as an ordinal variable we might see a significant linear regression model.
+
+A soft takeaway then is play easier champions...at least easier as defined by mobalytics.

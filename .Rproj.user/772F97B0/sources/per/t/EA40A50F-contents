@@ -13,7 +13,6 @@ library(data.table)
 library(cluster)
 ```
 
-
 # Changing Data Structure and Making a List to Store Results
 ```{r}
 gameInfo.win <- gameInfo %>% 
@@ -36,26 +35,54 @@ head(winrate$tables$base)
 ```{r}
 winrate$plots$base <- winrate$tables$base %>% 
   left_join(
-    champions,
-    by = c("championName" = "id")
+    champions.scraped,
+    by = c("championName" = "name")
   ) %>% 
   plot_ly(
     x = ~games,
     y = ~winrate,
-    color = ~tag1,
+    color = ~tag,
     text = ~championName,
     type = "scatter",
     mode = "markers"
   )
 
 winrate$plots$base
-# Akshan not present in the champions data gotten FROM the riot games api...RITO PLS. That's the NA in the plot...
 ```
 Lux is very popular and has a high win rate. Also yeesh, Ryze has a really low win rate in Season 11. Maybe we can see a bit more when we include the tier of play. Weirdly a lot of marksmen in the very popular category. From inspection there might be three groups of champions:
 1. Balanced with medium play rate
 2. Balanced with high play rate
 3. Under tuned with low play rate
 My worry with a k-means is that the relative importance games played will overshadow the winrate statistic - maybe we can normalize the dataset.
+
+# Adding Tier Information
+```{r}
+winrate$tables$tier <- gameInfo.win %>% 
+  group_by(championName, tier) %>% 
+  summarize(winrate = mean(win), games = n(), .groups = "drop")
+
+head(winrate$tables$tier)
+```
+```{r}
+winrate$plots$tier <- winrate$table$tier %>% 
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    color = ~tier,
+    text = ~championName,
+    type = "scatter",
+    mode = "markers"
+  )
+
+winrate$plots$tier
+```
+Well we can for sure see regression towards the mean with a higher number of games wit ha few notable exceptions:
+1. Rell is popping off in Diamond but likely variance due to low game number. Similar with Ornn in Iron. 
+2. One notable outlier that can be viewed instantly is Iron Yuumi, with a winrate of 0.434 which matches intuition. 
+3. Similarly, Ryze, Zoe, and Gwen have horrible win rates in bronze for the number of games. However this also might be due to oversampling of particular players in the scraping process. 
+
+A few ADC's also grab my attention - Ezreal and Lucian seem to have an especially low winrate in Diamond. Might be worth investigating. This data set doesn't have any obvious clusters to my eyes, let's try running a kmeans clustering algorithm on the overall play rates.
+
 # K-means Clustering
 ## Normalize Data Set and run kmeans models
 ```{r}
@@ -204,38 +231,152 @@ The 3 cluster model was too general and the 4 cluster model identifies an under 
 It's also unclear whether or not the low play rate is a cause of the low win rate or because of champion imbalance. Optimal prescriptive balance changes might simply be a simple binary classifier in which champions below a certain win rate need buffs and the converse for high win rate champions.
 
 So low play rate might be caused by a few factors:
-1. The champion is weak
+1. The champion is weak and thus people avoid playing them. Champion weakness can be because:
   A. The champion cannot carry even when given gold
   B. They have a hard time acquiring gold
-2. 
+  Note that these factors could be cause by external factors like the metacgame or item changes.
+2. The champion is difficult or un-fun and thus fewer players choose to play said champion.
 
-# Adding Tier Information
+To test hypothesis 1, we can control for gold and examine the winrates of the lowest winrate champions. If the champion's winrate is no different from the null hypothesis (50%) at higher gold values, then sub hypothesis A is false. From there, we can look at the average gold distribution for that champion, and if it is significantly lower than the null hypothesis, then hypothesis B is true. 
+
+If both hypotheses are false, then we can use either internal or external (Mobalytics) measures of difficulty to determine the accuracy of hypothesis 2. 
+
+## Preparation
+### High / Low WR table of champions
+Let's take the 3 champions per role with the lowest winrates and compare them to the top 3 winrate champions by role.
 ```{r}
-winrate$tables$tier <- gameInfo.win %>% 
-  group_by(championName, tier) %>% 
-  summarize(winrate = mean(win), games = n(), .groups = "drop")
+# Considering a Champion as a Role only if 75%+ of games played are of that role
+data.temp$championRoles <- gameInfo.noInvalid %>% 
+  group_by(championName) %>% 
+  count(individualPosition) %>% 
+  mutate(
+    n = n/sum(n),
+    role = case_when(
+      n >= .75  ~  TRUE,
+      n < .75   ~  FALSE
+    )
+  ) %>% 
+  filter(role == TRUE) %>% 
+  ungroup() %>% 
+  select(championName, individualPosition) %>% 
+  left_join(
+    winrate$tables$base,
+    by = "championName"
+  ) %>% 
+  arrange(winrate)
 
-head(winrate$tables$tier)
+winrate$tables$highlow <- bind_rows(
+  data.temp$championRoles %>% 
+    group_by(individualPosition) %>% 
+    slice(1:3) %>% 
+    mutate(win = "low"),
+  data.temp$championRoles %>% 
+    group_by(individualPosition) %>% 
+    slice((n()-2):n()) %>% 
+    mutate(win = "high")
+) %>% 
+  ungroup()
+
+winrate$tables$highlow
 ```
+### Function To Execute Model Generation
 ```{r}
-winrate$plots$tier <- winrate$table$tier %>% 
-  plot_ly(
-    x = ~games,
-    y = ~winrate,
-    color = ~tier,
-    text = ~championName,
-    type = "scatter",
-    mode = "markers"
+GET_WR_DATA <- function(ROLE, TABLE1 = data.temp$goldPercent, TABLE2 = winrate$tables$highlow){
+  
+  glm_data <- TABLE1 %>% 
+    filter(
+      championName %in% (TABLE2 %>% 
+        filter(individualPosition == ROLE) %>% 
+        {.$championName})
+    ) %>% 
+    return()
+  
+}
+
+GET_WR_MODEL <- function(table){
+  
+  glm(win ~ championName*goldEarned, data = table, family = "binomial") %>% 
+    return()
+  
+}
+
+GET_WR_PLOTS <- function(table){
+  # browser()
+  role = table$individualPosition[[1]]
+  models <- list()
+  preds <- list()
+  goldRange <- tibble(goldEarned = seq(0, .75, length.out = 75))
+  
+  champions <- table %>% 
+    distinct(championName)
+  
+  plot <- plot_ly()
+  
+  for(i in 1:nrow(champions)){
+    
+    models[[i]] <- table %>% 
+      filter(championName == champions$championName[[i]]) %>% 
+      glm(formula = win~goldEarned, family = "binomial", data = .)
+    
+    preds[i] <- predict(models[[i]], new.data = goldRange)
+    
+    plot <- plot %>% 
+      add_trace(
+        x = goldRange$goldEarned,
+        y = preds[i],
+        type = "scatter",
+        mode = "lines+markers",
+        name = champions$championName[[i]]
+      )
+    
+  }
+  
+  plot <- plot %>% 
+    layout(
+      xaxis = "Gold Percent",
+      yaxis = "Predicted Probability of Winning",
+      title = paste0("Top and Bottom 3 Winrate Champions (", role, ")")
+    )
+  
+  return(plot)
+}
+```
+
+
+## Observing Winrate when Controlling for Gold Percent
+```{r}
+# Doing this in two steps to save the hassle of rerunning when troubleshooting
+winrate$tables$WR_highlow.temp <- tibble(
+  ROLE = winrate$tables$highlow %>% 
+    distinct(individualPosition) %>% 
+    {.$individualPosition}
+) %>% 
+  mutate(
+    table = pmap(
+      .,
+      .f = GET_WR_DATA
+    ),
+    model = map(
+      table,
+      .f = GET_WR_MODEL
+    )
   )
 
-winrate$plots$tier
-```
-Well we can for sure see regression towards the mean with a higher number of games wit ha few notable exceptions:
-1. Rell is popping off in Diamond but likely variance due to low game number. Similar with Ornn in Iron. 
-2. One notable outlier that can be viewed instantly is Iron Yuumi, with a winrate of 0.434 which matches intuition. 
-3. Similarly, Ryze, Zoe, and Gwen have horrible win rates in bronze for the number of games. However this also might be due to oversampling of particular players in the scraping process. 
+winrate$tables$WR_highlow <- winrate$tables$WR_highlow.temp %>% 
+  mutate(
+    plot = map(
+      table,
+      .f = GET_WR_PLOTS
+    )
+  )
 
-A few ADC's also grab my attention - Ezreal and Lucian seem to have an especially low winrate in Diamond. Might be worth investigating.
+winrate$tables$WR_highlow.temp
+```
+
+```{r}
+
+```
+
 
 # Covariate Champion Winrate
 Are there any particular combinations of champions which are truly degenerate (see Master Yi - Taric funneling which was a gigantic issue in previous seasons)
@@ -256,8 +397,8 @@ data.temp$champTeams <- gameInfo.win %>%
 ## Executing Function
 ```{r}
 winrate$tables$covariate.temp <- expand.grid(
-  champions$id,
-  champions$id
+  champions.scraped$name,
+  champions.scraped$name
 ) %>%
   apply(., 1, sort) %>% # Removing rows symmetrically, no need to double search
   t() %>% 
@@ -268,22 +409,22 @@ winrate$tables$covariate.temp <- expand.grid(
 
 # This takes SO damn long to run, I wonder if there is a better way to do this...
 # Doing this in two steps to avoid running long functions again
-# winrate$tables$covariate.temp2 <- winrate$tables$covariate.temp %>%
-#   mutate(
-#     gameList = pmap(
-#       .,
-#       .f = function(Champ1, Champ2, TABLE = data.temp$champTeams){
-# 
-#         TABLE %>%
-#           group_by(match, win) %>%
-#           filter(champion == Champ1) %>% # Okay this is way faster but still turbo slow
-#           filter(str_detect(team, paste0("_", Champ2, "_"))) %>% 
-#           ungroup() %>%
-#           return()
-# 
-#       }
-#     )
-#   )
+winrate$tables$covariate.temp2 <- winrate$tables$covariate.temp %>%
+  mutate(
+    gameList = pmap(
+      .,
+      .f = function(Champ1, Champ2, TABLE = data.temp$champTeams){
+
+        TABLE %>%
+          group_by(match, win) %>%
+          filter(champion == Champ1) %>% # Okay this is way faster but still turbo slow
+          filter(str_detect(team, paste0("_", Champ2, "_"))) %>%
+          ungroup() %>%
+          return()
+
+      }
+    )
+  )
 
 winrate$tables$covariate <- winrate$tables$covariate.temp2 %>% 
   mutate(
