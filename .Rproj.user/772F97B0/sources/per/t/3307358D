@@ -3,7 +3,7 @@
     "path": "~/Personal Projects/LeagueofLegends/BasicStatisticalModels.Rmd",
     "project_path": "BasicStatisticalModels.Rmd",
     "type": "r_markdown",
-    "hash": "2165031500",
+    "hash": "3399624066",
     "contents": "",
     "dirty": false,
     "created": 1639185326158.0,
@@ -13,15 +13,15 @@
         "chunk_output_type": "inline",
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "224,0",
+        "cursorPosition": "223,596",
         "scrollLine": "223"
     },
     "folds": "",
-    "lastKnownWriteTime": 1639661314,
+    "lastKnownWriteTime": 1639701063,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1639661315004,
+    "last_content_update": 1639701063677,
     "read_only": false,
     "read_only_alternatives": []
 }

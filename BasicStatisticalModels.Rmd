@@ -221,6 +221,6 @@ results$plots$championDifficulty <- plot_model(results$models$championDifficulty
 
 results$plots$championDifficulty
 ```
-Hard to say - I might have expected that win rate of difficult champions would increase when we get to higher ranks. Difficulty however, does not take into account meta and other interactions. The model generated doesn't have the greatest significance so interpretability is limited. It is striking however, the general trend of winrate decreasing with the increase of champion difficulty. Maybe if we interpret difficulty as an ordinal variable we might see a significant linear regression model.
+Hard to say - I might have expected that win rate of difficult champions would increase when we get to higher ranks. Difficulty however, does not take into account meta and other interactions. The model generated doesn't have the greatest significance so interpretability is limited. It is striking however, the general trend of winrate decreasing with the increase of champion difficulty. Maybe if we interpret difficulty as an ordinal variable we might see a significant linear regression model. Will be looked at in more detail after examining initial winrates in the "ChampionStatistics.RMD" notebook.
 
 A soft takeaway then is play easier champions...at least easier as defined by mobalytics.

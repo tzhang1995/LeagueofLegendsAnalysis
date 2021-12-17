@@ -3,19 +3,17 @@ title: "League of Legends Analysis"
 output: html_notebook
 ---
 # Introduction
-Like most league of legends players, I have a love / hate relationship with this game. I love the game to death, but playing it is an absolute nightmare. Feeding into this dynamic is partially the champion balance, or lack thereof, in this game which leads to frustrations on my part. In an effort to better understand champion balance I wanted to do two things:
+Like most league of legends players, I have a love / hate relationship with this game. I love the game to death, but playing it is an absolute nightmare. Feeding into this dynamic is partially the champion balance, or lack thereof, in this game which leads to frustrations on my part. In an effort to better understand champion balance I wanted to do a few things:
 
-1. Establish a more robust champion win - rate statistic
-2. Apply unsupervised statistical learning techniques to model and understand team compositions
+1. Understand how winrate is affected by vision score and establish quick rules of thumb for appropriate vision scores by game time.
+2. Why certain champions have low winrates and derive practical recommendations for players.
+3. Apply unsupervised statistical learning techniques to model and understand team compositions and winning factors that can be analyzed before the game starts. 
 
-The first thing I wanted to establish is a covariate champion win rate statistic. For example, truly degenerate combos like Lucian / Nami or Nidalee / Renekton make playing the game absolutely miserable, and I would like to show that such particular combinations have a greater effect on team win rate than either champion alone. 
-
-For the second, I look back at clash games that my friends and I have played, and I want to understand (beyond mistakes or skill disparity) compositional weaknesses we may or may not have drafted.
-
-To Do List:
-1. Examine tree based classifiers and SVM
-2. Examine covariate win-rate statistics
-3. Apply deep learning to tease apart clusters of team compositions
+# Run Order
+1. DataExtraction.RMD
+2. BasicStatisticalModels.RMD
+3. ChampionStatistics.RMD
+4. NeuralNetwork.RMD
 
 # Acknowledgements
 A lot of this code is based off of reddit user u/WallabyKingdom's work, so shouts out for laying the groundwork for me to springboard off of.

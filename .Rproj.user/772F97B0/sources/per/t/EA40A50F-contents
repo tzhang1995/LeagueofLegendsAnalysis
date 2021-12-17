@@ -7,6 +7,7 @@ This notebook outlines my process of generating models regarding champion statis
 
 # Packages
 ```{r}
+library(tidyverse)
 library(plotly)
 library(RColorBrewer)
 library(data.table)
@@ -300,11 +301,10 @@ GET_WR_MODEL <- function(table){
   
 }
 
-GET_WR_PLOTS <- function(ROLE, table, table2 = winrate$tables$highlow, ...){
+GET_WR_PLOTS <- function(ROLE, table, table2 = winrate$tables$highlow, goldRange = data.frame(goldEarned = seq(0, .75, length.out = 75)), ...){
   
   models <- list()
   preds <- list()
-  goldRange <- data.frame(goldEarned = seq(0, .75, length.out = 75))
   
   champions <- table %>% 
     distinct(championName) %>% 
@@ -392,8 +392,61 @@ winrate$tables$WR_highlow <- data.temp$WR_highlow.temp %>%
 
 winrate$tables$WR_highlow$plot
 ```
+Ah right, this is hard to interpret as it's already been shown that gold percent doesn't usually make a huge difference on position other than bottom. There are some interesting conclusions to be made however:
 
+  1. Interpreting the ADC slot however, we observe that the highest winrate champions are the ones that are strong with or without gold, thus the conclusion is that these champions have a low win rate because they have a hard time acquiring gold.       2. Observing the top lane which has been shown to be generally insensitive to gold percent - champions like Rekenton and Gwen seem to be very good at carrying when they have a large percentage of team gold but are very unlikely to win if they are not the champion fed resources. Gangplank has the opposite problem in that he does *worse* the more fed he is relative to his teammates, meaning that he has a hard time solo carrying a game.
+  3. An interesting insight that can be made from the jungle position is that Master Yi (as expected) is a very hard carry if he can get the ball rolling, which it might appear that he does as he is played significantly more in lower elos. Conversely, champions like Skarner and Rammus do very poorly with gold but have a high win rate likely to do their ability to feed gold to their laners and their relatively easy kit.
+  4. Overall we observe that a champions on the extremes of winrate are well modeled by their difficulty - an emergent hypothesis: the additional cognitive load incurred by playing a high difficulty champions will reduce performance and thus adversely affect winrate.
+  
+### Observing Play rate / Difficulty Metrics
+```{r}
+winrate$tables$tier %>% 
+  filter(championName %in% c("Rammus", "MasterYi", "Skarner"))
+champions.scraped %>% 
+  right_join(
+    winrate$tables$highlow,
+    by = c("name" = "championName")
+  ) %>% 
+  arrange(individualPosition, win)
+```
+## Difficulty and Winrate
+```{r}
+winrate$tables$difficulty <- winrate$tables$base %>% 
+  left_join(
+    champions.scraped %>% 
+      select(!tag),
+    by = c("championName" = "name")
+  )
 
+winrate$tables$difficulty %>%
+  group_by(difficulty) %>% 
+  summarize(sd = sd(winrate), winrate = mean(winrate), n = n(), .groups = "drop") %>% 
+  mutate(sem = sd / sqrt(n)) %>% 
+  ggplot(aes(x = difficulty, y = winrate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = winrate - sem, ymax = winrate + sem), width = .3)
+```
+## ANOVA and Post-Hoc Tests
+```{r}
+winrate$tables$difficulty %>% 
+  aov(winrate~difficulty, data = .) %>% 
+  summary()
+# So differences definetly exist
+
+winrate$tables$difficulty %>% 
+  aov(winrate~difficulty, data = .) %>% 
+  TukeyHSD() %>% 
+  {.$difficulty} %>% 
+  as_tibble(rownames = "comparison") 
+```
+So insignificant differences with the exception of the severe comparisons. Graphical analysis does show slight advantages to easy champions. 
+
+Takeaways:
+  1. As an ADC, don't play hyper carries, your champ should do well with or without gold e.g., Miss Fortune, Ashe.
+  2. As a jungler - if you're going to play a carry champion, make sure you set yourself to get ahead early or if you're playing a supportive jungler, make sure you get your lanes ahead.
+  3. As a top laner, if you're playing a hyper carry, cry to your jungler and mid to camp your lane becuase it's going to be a bad time if you get behind.
+  4. As a mid laner, play easier champions and try to get your lanes ahead. Mid doesn't carry as much when you have too much gold relative to your team.
+  5. As a support, play easier champions and unless you're playing pyke, give the gold to your team and ward a lot more. 
 
 # Covariate Champion Winrate
 Are there any particular combinations of champions which are truly degenerate (see Master Yi - Taric funneling which was a gigantic issue in previous seasons)
@@ -478,3 +531,5 @@ winrate$plots$covariate <- winrate$tables$covariate %>%
 winrate$plots$covariate 
 ```
 Probably not enough games to make any predictions - with 155*154 champion duo combinations, would need a lot more data to have a decent sample of all combinations.
+
+Next, I'll be attempting to use a neural network to make predictions.
