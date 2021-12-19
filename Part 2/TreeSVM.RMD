@@ -1,0 +1,188 @@
+---
+title: "Trees and Support Vector Machines"
+output: html_notebook
+---
+
+This notebook outlines my process of tree based and SVM models. This notebook is dependent on the data table gameInfo generated from DataExtraction.RMD.
+
+# Loading Data from other part
+```{r}
+load("../data/league.RDATA")
+```
+
+
+# Packages
+```{r}
+library(tidyverse)
+library(data.table)
+library(randomForest)
+library(rpart.plot)
+library(word2vec)
+library(Rtsne)
+library(plotly)
+```
+
+# List to Store Results
+```{r}
+data.tree <- list(
+  models = list(),
+  plots = list(),
+  temp.data = list()
+)
+championCluster <- list(
+  models = list(),
+  plots = list(),
+  temp.data = list()
+)
+```
+
+
+# Wrangling Data
+So I want to make a basic tree classifier of projected winning team comps. For now, a basic model of simple champion tags will be used.
+```{r}
+data.tree$temp.data$gameInfo.temp <- gameInfo %>% 
+  left_join(
+    champions.scraped,
+    by = c("championName" = "name")
+  ) %>% 
+  group_by(match) %>% 
+  mutate(
+    team = rleid(win)
+  ) %>% 
+  ungroup()
+
+data.tree$temp.data$gameInfo.tags <- data.tree$temp.data$gameInfo.temp %>% 
+  group_by(match, team) %>% 
+  count(tag) %>% 
+  ungroup() %>% 
+  pivot_wider(
+    names_from = tag,
+    values_from = n
+  ) %>% 
+  pivot_wider() %>% 
+  replace(is.na(.), 0) 
+
+
+data.tree$temp.data$gameInfo.tree <- data.tree$temp.data$gameInfo.temp %>% 
+  filter(win == TRUE) %>% 
+  select(match, team_win = team) %>% 
+  distinct(match, .keep_all = T) %>% 
+  mutate(
+    team_win = factor(team_win, levels = c(1, 2))
+  ) %>% 
+  left_join(
+    data.tree$temp.data$gameInfo.tags %>% 
+      filter(team == 1) %>% 
+      rename_with(
+        .fn = function(x){
+          
+          paste0(x, "_1") %>% 
+            return()
+          
+        },
+        .cols = 3:8
+      ) %>% 
+      select(!team),
+    by = "match"
+  ) %>% 
+  left_join(
+    data.tree$temp.data$gameInfo.tags %>% 
+      filter(team == 2) %>% 
+      rename_with(
+        .fn = function(x){
+          
+          paste0(x, "_2") %>% 
+            return()
+          
+        },
+        .cols = 3:8
+      ) %>% 
+      select(!team),
+    by = "match"
+  ) %>% 
+  mutate_if(is.integer, as.factor)
+
+data.tree$temp.data$gameInfo.tree
+```
+
+# Setting up Training / Test Data
+```{r}
+# Setting Seed for Reproducibility
+set.seed(3)
+data.tree$temp.data$sample <- sample(data.tree$temp.data$gameInfo.tree$match, nrow(data.tree$temp.data$gameInfo.tree)*.7)
+data.tree$temp.data$train <- data.tree$temp.data$gameInfo.tree %>% 
+  filter(match %in% data.tree$temp.data$sample)
+data.tree$temp.data$test <- data.tree$temp.data$gameInfo.tree %>% 
+  filter(!match %in% data.tree$temp.data$sample)
+```
+
+# Generating Random Forest
+```{r}
+set.seed(3)
+data.tree$models$teamComp_forest <- randomForest(
+  team_win ~ . - match,
+  data = data.tree$temp.data$train,
+  ntree = 500,
+  importance = TRUE,
+  na.action = na.omit
+)
+
+data.tree$models$teamComp_forest
+```
+```{r}
+importance(data.tree$models$teamComp_forest)
+varImpPlot(data.tree$models$teamComp_forest)
+```
+Let's compare to a simple blue side always wins classifier:
+```{r}
+data.tree$temp.data$gameInfo.tree %>% 
+  count(team_win) %>% 
+  mutate(n = n/sum(n))
+```
+Well, it's slightly better than the naive blue side win classifier but clearly the number of champions with tags isn't a very strong predictor of team success. With the current coding, I'm fairly certain that there won't really be a robust classifier.
+
+Let's try to identify clusters of champion types.
+# Generating Input Team Sentences 
+```{r}
+championCluster$temp.data$teams <- gameInfo %>% 
+  select(match, win, championName) %>% 
+  group_by(match, win) %>% 
+  mutate(championNumber = row_number()) %>% 
+  pivot_wider(
+    names_from = championNumber,
+    values_from = championName
+  ) %>% 
+  transmute(match = match, win = win, team = str_c(`1`,`2`,`3`,`4`,`5`, sep = " ")) %>% 
+  ungroup() %>% 
+  select(team)
+
+championCluster$temp.data$teams
+```
+# Generating Model
+```{r}
+set.seed(3)
+championCluster$models$nlpModel <- word2vec(
+  x = championCluster$temp.data$teams$team, 
+  type = "skip-gram", 
+  dim = 20, 
+  iter = 15
+)
+
+# Embedding Matrix
+championCluster$models$embeddingMatrix <- as.matrix(championCluster$models$nlpModel)
+
+# Applying TSne 
+championCluster$models$Tsne <- Rtsne(championCluster$models$embeddingMatrix, pca = FALSE)
+
+championCluster$plots$map <- championCluster$models$Tsne$Y %>% 
+  as.data.frame() %>%
+  mutate(champion = row.names(championCluster$models$embeddingMatrix)) %>%
+  ggplot(aes(x = V1, y = V2, label = word)) + 
+  geom_text(size = 3) 
+
+championCluster$plots$map <- championCluster$plots$map %>% 
+  ggplotly()
+
+championCluster$plots$map 
+```
+Pretty clearly 5 main clusters of champions each corresponding to a role. Doesn't really help too much in determining team compositions. I could set up a KNN to verify this but it seems pretty clear cut to me.

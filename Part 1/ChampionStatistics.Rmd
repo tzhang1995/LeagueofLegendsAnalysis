@@ -1,0 +1,533 @@
+---
+title: "Champion Statistics"
+output: html_notebook
+---
+
+This notebook outlines my process of generating models regarding champion statistics. This notebook is dependent on the data table gameInfo generated from DataExtraction.RMD.
+
+# Packages
+```{r}
+library(tidyverse)
+library(plotly)
+library(RColorBrewer)
+library(data.table)
+library(cluster)
+```
+
+# Changing Data Structure and Making a List to Store Results
+```{r}
+gameInfo.win <- gameInfo %>% 
+  mutate(win = as.logical(win)) # Changing to logical to make future code easier
+# # Commenting out to make sure that I don't run over my cashed results
+# winrate <- list(
+#   tables = list(),
+#   plots = list()
+# )
+```
+
+# Overall Champion Winrate
+```{r}
+winrate$tables$base <- gameInfo.win %>% 
+  group_by(championName) %>% 
+  summarize(winrate = mean(win), games = n(), .groups = "drop")
+
+head(winrate$tables$base)
+```
+```{r}
+winrate$plots$base <- winrate$tables$base %>% 
+  left_join(
+    champions.scraped,
+    by = c("championName" = "name")
+  ) %>% 
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    color = ~tag,
+    text = ~championName,
+    type = "scatter",
+    mode = "markers"
+  )
+
+winrate$plots$base
+```
+Lux is very popular and has a high win rate. Also yeesh, Ryze has a really low win rate in Season 11. Maybe we can see a bit more when we include the tier of play. Weirdly a lot of marksmen in the very popular category. From inspection there might be three groups of champions:
+1. Balanced with medium play rate
+2. Balanced with high play rate
+3. Under tuned with low play rate
+My worry with a k-means is that the relative importance games played will overshadow the winrate statistic - maybe we can normalize the dataset.
+
+# Adding Tier Information
+```{r}
+winrate$tables$tier <- gameInfo.win %>% 
+  group_by(championName, tier) %>% 
+  summarize(winrate = mean(win), games = n(), .groups = "drop")
+
+head(winrate$tables$tier)
+```
+```{r}
+winrate$plots$tier <- winrate$table$tier %>% 
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    color = ~tier,
+    text = ~championName,
+    type = "scatter",
+    mode = "markers"
+  )
+
+winrate$plots$tier
+```
+Well we can for sure see regression towards the mean with a higher number of games wit ha few notable exceptions:
+1. Rell is popping off in Diamond but likely variance due to low game number. Similar with Ornn in Iron. 
+2. One notable outlier that can be viewed instantly is Iron Yuumi, with a winrate of 0.434 which matches intuition. 
+3. Similarly, Ryze, Zoe, and Gwen have horrible win rates in bronze for the number of games. However this also might be due to oversampling of particular players in the scraping process. 
+
+A few ADC's also grab my attention - Ezreal and Lucian seem to have an especially low winrate in Diamond. Might be worth investigating. This data set doesn't have any obvious clusters to my eyes, let's try running a kmeans clustering algorithm on the overall play rates.
+
+# K-means Clustering
+## Normalize Data Set and run kmeans models
+```{r}
+winrate$tables$base.normal <- winrate$tables$base %>% 
+  mutate(winrate = (winrate - mean(winrate))/sd(winrate), games = (games - mean(games))/sd(games))
+
+results$models$winplay$kmeans <- list() # List to store k-means models
+results$models$winplay$silhouette <- tibble(k = 2:9, sumofsq = rep(0,8))
+
+set.seed(1)
+for(i in 1:8){
+  
+  results$models$winplay$kmeans[[i]] <- kmeans(winrate$tables$base.normal %>% select(!championName), centers = i + 1, nstart = 50)
+  
+  results$models$winplay$silhouette$sumofsq[[i]] <- results$models$winplay$kmeans[[i]]$tot.withinss
+  
+}
+rm(i)
+results$models$winplay$silhouette %>% 
+  plot_ly(
+    x = ~k,
+    y = ~sumofsq,
+    type = "scatter",
+    mode = "lines+markers"
+  )
+```
+It would appear that 3 or 4 clusters is optimal - let's plot them:
+## Plotting
+### Setting up Data Table
+```{r}
+data.temp$clusterMembership <- tibble(base = rep(0,157))
+for(i in 1:length(results$models$winplay$kmeans)){
+  
+  data.temp$clusterMembership[,i] <- results$models$winplay$kmeans[[i]]$cluster
+  
+} 
+rm(i)
+data.temp$names <- str_c(rep("k = "), 2:9)
+winrate$tables$clustered <- bind_cols(
+    winrate$tables$base,
+    data.temp$clusterMembership %>% 
+      `names<-`(data.temp$names)
+  )
+
+winrate$tables$clustered
+```
+### Graphing Method 1
+```{r}
+# Will use this in the future, even if there is that ugly play button
+winrate$tables$clustered %>% 
+  pivot_longer(cols = 4:11, names_to = "n_clusters", values_to = "membership") %>%
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    colors = "Set3",
+    color = ~membership,
+    frame = ~n_clusters,
+    type = "scatter",
+    mode = "markers",
+    text = ~championName
+  ) %>% 
+  layout(
+    title = "Cluster Membership",
+    xaxis = list(title = "Games Played"),
+    yaxis = list(title = "Winrate")
+  ) %>% 
+  animation_opts(
+    frame = 100
+  )
+```
+
+### Graphing Method 2 (Really annoying but better plot)
+```{r}
+plotly_args <- list() # List to store plotly arguments
+plotly_args$traces <- list() # List of plots 
+
+for(i in 1:length(results$models$winplay$kmeans)){
+  
+  plotly_args$traces[[i]] <- list(
+    visible = F,
+    name = i+1,
+    x = winrate$tables$clustered$games,
+    y = winrate$tables$clustered$winrate,
+    text = winrate$tables$clustered$championName,
+    color = winrate$tables$clustered[,i+3][[1]],
+    colors = "Set3"
+  )
+  
+}
+
+plotly_args$traces[2][[1]]$visible = T # Manually setting the k=3 plot to be visible first
+
+plotly_args$steps <- list() # List to store objects populated by loop
+data.temp$fig <- plot_ly()
+
+for(i in 1:length(results$models$winplay$kmeans)){
+  
+  data.temp$fig <- add_markers(
+    data.temp$fig,
+    x = plotly_args$traces[i][[1]]$x,
+    y = plotly_args$traces[i][[1]]$y,
+    color = plotly_args$traces[i][[1]]$color,
+    colors = plotly_args$traces[i][[1]]$colors,
+    visible = plotly_args$traces[i][[1]]$visible,
+    name = plotly_args$traces[i][[1]]$name,
+    text = plotly_args$traces[i][[1]]$text,
+    type = "scatter",
+    mode = "markers",
+    showlegend = F
+  )
+  
+  plotly_args$step <- list(
+    args = list(
+      "visible",
+      rep(F, length(plotly_args$traces))
+    ),
+    method = "restyle",
+    label = plotly_args$traces[i][[1]]$name
+  )
+  
+  plotly_args$step$args[[2]][i] = T
+  plotly_args$steps[[i]] = plotly_args$step
+  
+}
+rm(i)
+
+winrate$plots$kmeans <- data.temp$fig %>% 
+  layout(
+    sliders = list(list(
+      active = 1, # 0 indexed in R, nice
+      currentvalue = list(prefix = "k = "),
+      steps = plotly_args$steps,
+      pad = list(t = 45)
+    ))
+  ) %>% 
+  layout(
+    title = "Cluster Membership",
+    xaxis = list(title = "Games Played"),
+    yaxis = list(title = "Winrate")
+  )
+
+winrate$plots$kmeans
+```
+The 3 cluster model was too general and the 4 cluster model identifies an under performing group but includes champions like Cassiopiea with a decent win rate (0.495) in this group. The 5 cluster model appears to capture this under performing group of champions without gross overestimating. This is presuming that there *is* indeed an underlying structure to this space which may not be the case. It may be the case that a more complex space may yield more representative results as k-means clustering uses euclidean distance. 
+
+It's also unclear whether or not the low play rate is a cause of the low win rate or because of champion imbalance. Optimal prescriptive balance changes might simply be a simple binary classifier in which champions below a certain win rate need buffs and the converse for high win rate champions.
+
+So low play rate might be caused by a few factors:
+1. The champion is weak and thus people avoid playing them. Champion weakness can be because:
+  A. The champion cannot carry even when given gold
+  B. They have a hard time acquiring gold
+  Note that these factors could be cause by external factors like the metacgame or item changes.
+2. The champion is difficult or un-fun and thus fewer players choose to play said champion.
+
+To test hypothesis 1, we can control for gold and examine the winrates of the lowest winrate champions. If the champion's winrate is no different from the null hypothesis (50%) at higher gold values, then sub hypothesis A is false. From there, we can look at the average gold distribution for that champion, and if it is significantly lower than the null hypothesis, then hypothesis B is true. 
+
+If both hypotheses are false, then we can use either internal or external (Mobalytics) measures of difficulty to determine the accuracy of hypothesis 2. 
+
+## Preparation
+### High / Low WR table of champions
+Let's take the 3 champions per role with the lowest winrates and compare them to the top 3 winrate champions by role.
+```{r}
+# Considering a Champion as a Role only if 75%+ of games played are of that role
+data.temp$championRoles <- gameInfo.noInvalid %>% 
+  group_by(championName) %>% 
+  count(individualPosition) %>% 
+  mutate(
+    n = n/sum(n),
+    role = case_when(
+      n >= .75  ~  TRUE,
+      n < .75   ~  FALSE
+    )
+  ) %>% 
+  filter(role == TRUE) %>% 
+  ungroup() %>% 
+  select(championName, individualPosition) %>% 
+  left_join(
+    winrate$tables$base,
+    by = "championName"
+  ) %>% 
+  arrange(winrate)
+
+winrate$tables$highlow <- bind_rows(
+  data.temp$championRoles %>% 
+    group_by(individualPosition) %>% 
+    slice(1:3) %>% 
+    mutate(win = "low"),
+  data.temp$championRoles %>% 
+    group_by(individualPosition) %>% 
+    slice((n()-2):n()) %>% 
+    mutate(win = "high")
+) %>% 
+  ungroup()
+
+winrate$tables$highlow
+```
+### Function To Execute Model Generation
+```{r}
+GET_WR_DATA <- function(ROLE, TABLE1 = data.temp$goldPercent, TABLE2 = winrate$tables$highlow){
+  
+  glm_data <- TABLE1 %>% 
+    filter(
+      championName %in% (TABLE2 %>% 
+        filter(individualPosition == ROLE) %>% 
+        {.$championName})
+    ) %>% 
+    return()
+  
+}
+
+GET_WR_MODEL <- function(table){
+  
+  glm(win ~ championName*goldEarned, data = table, family = "binomial") %>% 
+    return()
+  
+}
+
+GET_WR_PLOTS <- function(ROLE, table, table2 = winrate$tables$highlow, goldRange = data.frame(goldEarned = seq(0, .75, length.out = 75)), ...){
+  
+  models <- list()
+  preds <- list()
+  
+  champions <- table %>% 
+    distinct(championName) %>% 
+    left_join(
+      table2, 
+      by = "championName"
+    )
+
+  
+  plot <- plot_ly()
+  
+  for(i in 1:nrow(champions)){
+    
+    models[[i]] <- table %>% 
+      filter(championName == champions$championName[[i]]) %>% 
+      filter(individualPosition == ROLE) %>% 
+      glm(formula = win~goldEarned, family = "binomial", data = .)
+    
+    preds[[i]] <- predict.glm(models[[i]], type = "response", newdata = goldRange)
+    
+    if(champions$win[[i]] == "high"){
+      
+    plot <- plot %>% 
+      add_trace(
+        x = goldRange$goldEarned,
+        y = preds[[i]],
+        type = "scatter",
+        mode = "lines",
+        name = champions$championName[[i]]
+      )
+    } else if(champions$win[[i]] == "low"){
+      
+      plot <- plot %>% 
+      add_trace(
+        x = goldRange$goldEarned,
+        y = preds[[i]],
+        type = "scatter",
+        mode = "lines",
+        name = champions$championName[[i]],
+        line = list(dash = "dash")
+      )
+      
+    }
+    
+  }
+  
+  plot <- plot %>% 
+    layout(
+      xaxis = list(title = "Gold Percent"),
+      yaxis = list(title ="Predicted Probability of Winning"),
+      title = paste0("Top and Bottom 3 Winrate Champions (", str_to_title(ROLE), ")")
+    )
+  
+  return(plot)
+}
+```
+
+
+## Observing Winrate when Controlling for Gold Percent
+```{r}
+# Doing this in two steps to save the hassle of rerunning when troubleshooting
+data.temp$WR_highlow.temp <- tibble(
+  ROLE = winrate$tables$highlow %>% 
+    distinct(individualPosition) %>% 
+    {.$individualPosition}
+) %>% 
+  mutate(
+    table = pmap(
+      .,
+      .f = GET_WR_DATA
+    ),
+    model = map(
+      table,
+      .f = GET_WR_MODEL
+    )
+  )
+
+winrate$tables$WR_highlow <- data.temp$WR_highlow.temp %>% 
+  mutate(
+    plot = pmap(
+      .,
+      .f = GET_WR_PLOTS
+    )
+  )
+
+winrate$tables$WR_highlow$plot
+```
+Ah right, this is hard to interpret as it's already been shown that gold percent doesn't usually make a huge difference on position other than bottom. There are some interesting conclusions to be made however:
+
+  1. Interpreting the ADC slot however, we observe that the highest winrate champions are the ones that are strong with or without gold, thus the conclusion is that these champions have a low win rate because they have a hard time acquiring gold.       2. Observing the top lane which has been shown to be generally insensitive to gold percent - champions like Rekenton and Gwen seem to be very good at carrying when they have a large percentage of team gold but are very unlikely to win if they are not the champion fed resources. Gangplank has the opposite problem in that he does *worse* the more fed he is relative to his teammates, meaning that he has a hard time solo carrying a game.
+  3. An interesting insight that can be made from the jungle position is that Master Yi (as expected) is a very hard carry if he can get the ball rolling, which it might appear that he does as he is played significantly more in lower elos. Conversely, champions like Skarner and Rammus do very poorly with gold but have a high win rate likely to do their ability to feed gold to their laners and their relatively easy kit.
+  4. Overall we observe that a champions on the extremes of winrate are well modeled by their difficulty - an emergent hypothesis: the additional cognitive load incurred by playing a high difficulty champions will reduce performance and thus adversely affect winrate.
+  
+### Observing Play rate / Difficulty Metrics
+```{r}
+winrate$tables$tier %>% 
+  filter(championName %in% c("Rammus", "MasterYi", "Skarner"))
+champions.scraped %>% 
+  right_join(
+    winrate$tables$highlow,
+    by = c("name" = "championName")
+  ) %>% 
+  arrange(individualPosition, win)
+```
+## Difficulty and Winrate
+```{r}
+winrate$tables$difficulty <- winrate$tables$base %>% 
+  left_join(
+    champions.scraped %>% 
+      select(!tag),
+    by = c("championName" = "name")
+  )
+
+winrate$tables$difficulty %>%
+  group_by(difficulty) %>% 
+  summarize(sd = sd(winrate), winrate = mean(winrate), n = n(), .groups = "drop") %>% 
+  mutate(sem = sd / sqrt(n)) %>% 
+  ggplot(aes(x = difficulty, y = winrate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = winrate - sem, ymax = winrate + sem), width = .3)
+```
+## ANOVA and Post-Hoc Tests
+```{r}
+winrate$tables$difficulty %>% 
+  aov(winrate~difficulty, data = .) %>% 
+  summary()
+# So differences definetly exist
+
+winrate$tables$difficulty %>% 
+  aov(winrate~difficulty, data = .) %>% 
+  TukeyHSD() %>% 
+  {.$difficulty} %>% 
+  as_tibble(rownames = "comparison") 
+```
+So insignificant differences with the exception of the severe comparisons. Graphical analysis does show slight advantages to easy champions. 
+
+Takeaways:
+  1. As an ADC, don't play hyper carries, your champ should do well with or without gold e.g., Miss Fortune, Ashe.
+  2. As a jungler - if you're going to play a carry champion, make sure you set yourself to get ahead early or if you're playing a supportive jungler, make sure you get your lanes ahead.
+  3. As a top laner, if you're playing a hyper carry, cry to your jungler and mid to camp your lane becuase it's going to be a bad time if you get behind.
+  4. As a mid laner, play easier champions and try to get your lanes ahead. Mid doesn't carry as much when you have too much gold relative to your team.
+  5. As a support, play easier champions and unless you're playing pyke, give the gold to your team and ward a lot more. 
+
+# Covariate Champion Winrate
+Are there any particular combinations of champions which are truly degenerate (see Master Yi - Taric funneling which was a gigantic issue in previous seasons)
+## Temporary Table to Make Funciton More Efficient
+```{r}
+data.temp$champTeams <- gameInfo.win %>% 
+  select(match, win, championName) %>%
+  group_by(match, win) %>% 
+  mutate(champion = row_number()) %>% 
+  pivot_wider(
+    names_from = champion,
+    values_from = championName
+  ) %>% 
+  mutate(team = str_c("_",`2`,`3`,`4`,`5`,"_", sep = "_")) %>% 
+  select(match, win, champion = `1`, team) %>% 
+  ungroup()
+```
+## Executing Function
+```{r}
+winrate$tables$covariate.temp <- expand.grid(
+  champions.scraped$name,
+  champions.scraped$name
+) %>%
+  apply(., 1, sort) %>% # Removing rows symmetrically, no need to double search
+  t() %>% 
+  unique() %>% 
+  as_tibble() %>% 
+  rename(Champ1 = V1, Champ2 = V2) %>% 
+  filter(Champ1 != Champ2) # Removing diagonal elements
+
+# This takes SO damn long to run, I wonder if there is a better way to do this...
+# Doing this in two steps to avoid running long functions again
+winrate$tables$covariate.temp2 <- winrate$tables$covariate.temp %>%
+  mutate(
+    gameList = pmap(
+      .,
+      .f = function(Champ1, Champ2, TABLE = data.temp$champTeams){
+
+        TABLE %>%
+          group_by(match, win) %>%
+          filter(champion == Champ1) %>% # Okay this is way faster but still turbo slow
+          filter(str_detect(team, paste0("_", Champ2, "_"))) %>%
+          ungroup() %>%
+          return()
+
+      }
+    )
+  )
+
+winrate$tables$covariate <- winrate$tables$covariate.temp2 %>% 
+  mutate(
+    data = map(
+      gameList,
+      .f = function(gameList){
+        
+        gameList %>% 
+          summarize(winrate = mean(win), games = n()) %>% 
+          return()
+        
+      }
+    )
+  ) %>% 
+  unnest(cols = c(data))
+
+# Making a new table to make searching particular champion pairs easier
+winrate$tables$covariate.search <- bind_rows(
+  winrate$tables$covariate,
+  winrate$tables$covariate %>% 
+    rename(Champ2 = 1, Champ1 = 2)
+)
+
+
+winrate$plots$covariate <- winrate$tables$covariate %>% 
+  plot_ly(
+    x = ~games,
+    y = ~winrate,
+    text = ~paste(Champ1, Champ2, sep = " "),
+    type = "scatter",
+    mode = "markers"
+  )
+
+winrate$plots$covariate 
+```
+Probably not enough games to make any predictions - with 155*154 champion duo combinations, would need a lot more data to have a decent sample of all combinations.
