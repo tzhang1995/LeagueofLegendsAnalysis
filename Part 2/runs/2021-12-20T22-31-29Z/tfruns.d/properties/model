@@ -1,0 +1,28 @@
+Model
+Model: "model"
+________________________________________________________________________________
+ Layer (type)                       Output Shape                    Param #     
+================================================================================
+ input_1 (InputLayer)               [(None, 1)]                     0           
+                                                                                
+ text_vectorization (TextVectorizat  (None, 5)                      0           
+ ion)                                                                           
+                                                                                
+ embedding (Embedding)              (None, 5, 8)                    1288        
+                                                                                
+ global_average_pooling1d (GlobalAv  (None, 8)                      0           
+ eragePooling1D)                                                                
+                                                                                
+ dense_1 (Dense)                    (None, 8)                       72          
+                                                                                
+ dropout (Dropout)                  (None, 8)                       0           
+                                                                                
+ dense (Dense)                      (None, 1)                       9           
+                                                                                
+================================================================================
+Total params: 1,369
+Trainable params: 1,369
+Non-trainable params: 0
+________________________________________________________________________________
+
+
