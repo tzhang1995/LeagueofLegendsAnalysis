@@ -6,9 +6,14 @@ I. Part 1
   1. DataExtraction
   2. BasicStatisticalModels
   3. ChapmionStatistics
+ 
 II. Part 2
+
   4. TreeNN
+
+
 III. Part 3
+
   5. NeuralNetworks
 
 Item's 1, 2, and 3 are in "Part 1", item 4 in "Part 2" and item 5 in "Part3". This is mainly due to memory constraints - the match files are quite large and storing them in memeory is too taxing for my computer.
