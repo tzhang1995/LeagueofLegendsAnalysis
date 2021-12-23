@@ -28,5 +28,7 @@ Conclusions:
   A. Play easy champions, even in higher elos. 
   B. Try to get your ADC gold, same with junglers in higher elos.
   C. Mid needs to get the team ahead, they typically drop in winrate the more gold they have above 20% of team gold, especially in higher elo.
+  
+The .html files should be easiest to view any results with the exception of the neural networks which will entail a more involved process.
 
 A few basic Neural Network models were explored, likely will need more data from higher elo games to make any stronger conclusions regarding the predictive power of models. When just looking at one team, the validation accuracy of the neural network was around 52%. When including both teams, the validation accuracy rose to around 53% which I consider a decent result for a game with such high variance as league of legends. 
