@@ -5,12 +5,6 @@ output: html_notebook
 
 This notebook outlines my process of tree based and Neural Network models. This notebook is dependent on the data table gameInfo generated from DataExtraction.RMD.
 
-# Loading Data from other part
-```{r}
-load("../data/league.RDATA")
-```
-
-
 # Packages
 ```{r}
 library(tidyverse)
@@ -23,6 +17,11 @@ library(plotly)
 library(keras)
 library(tfruns)
 library(rsample)
+```
+
+# Loading Data from other part
+```{r}
+load("../data/league.RDATA")
 ```
 
 # List to Store Results
@@ -160,6 +159,7 @@ championCluster$temp.data$teams <- gameInfo %>%
   ungroup() 
 
 championCluster$temp.data$teams
+write_csv(championCluster$temp.data$teams, "../data/teamNames.csv")
 ```
 # Generating Model
 ```{r}
@@ -215,12 +215,23 @@ runs %>%
   arrange(desc(metric_val_accuracy))
 # So a dropout of .3 and 8 unit dense network seems to produce the best validation error
 ```
+
 ```{r}
 results
 ```
-52.14% accuracy, not the best, but not bad considering the variance of league of legends.
+Around 52% accuracy, not the best, but not bad considering the variance of league of legends.
 
+# Saving Model
 ```{r}
-model %>% predict("Camille Talon Veigar Jihn Lux")
+save_model_tf(model, "initialNN.tf")
+```
+```{r include = F}
+model <- load_model_tf("./initialNN.tf")
+```
+
+
+# Evaluating Example Team
+```{r}
+model %>% predict("Sett Trundle Kindred Ziggs Leona")
 ```
 A very weird way to code a team comp predictor - I'll try a different method in Part 3.

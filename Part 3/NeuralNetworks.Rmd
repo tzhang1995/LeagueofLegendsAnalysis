@@ -1,0 +1,87 @@
+---
+title: "More NN"
+output: html_notebook
+---
+In Parts 1 and 2, I explored basic statistical models and a first try at a NN using an embedding process to capture to relationship between the high dimensional categorical variables (champions on a team). I will now attempt to develop a neural network which can accept both teams input and try to make a more accurate team victory classifier just based on champions. Due to the high variance nature of league of legends, I wouldn't expect such a network to be able to achieve a success of over 60%. Perhaps if there was more data of just high level gameplay (diamond+) there could be a sufficiently accurate discrimination of win probability based on champion compositions. That being said, with such a large range of skill, we should be able to identify large scale trends.
+
+# Packages
+```{r}
+library(tidyverse)
+library(data.table)
+library(keras)
+library(tfruns)
+library(rsample)
+```
+
+# Load Data
+```{r}
+data.raw <- read_csv("../data/teamNames.csv")
+gameInfo <- read_csv("../data/matchData.csv")
+```
+
+# Wrangle Data
+```{r}
+data.NN <- left_join(
+  data.raw %>% 
+    filter(row_number() %% 2 == 1) %>% 
+    rename(team_1 = team),
+  data.raw %>% 
+    filter(row_number() %% 2 == 0) %>% 
+    rename(team_2 = team) %>% 
+    select(!win),
+  by = "match"
+)
+
+data.NN
+
+data.NN.tier <- data.NN %>% 
+  left_join(
+    gameInfo %>% 
+      distinct(match, tier),
+    by = "match"
+  )
+
+data.NN.tier
+```
+
+# Run Model 1
+## Diagnostics
+```{r}
+summary(model)
+```
+## Tuning Runs
+```{r}
+runs <- tuning_run(
+  "Model1.R", 
+  flags = list(
+    dropout = c(0.2, 0.3, 0.4, 0.5),
+    unit = c(8, 16, 64)
+  )
+)
+
+runs %>% 
+  as_tibble() %>% 
+  arrange(desc(metric_val_accuracy))
+# Best accurace with .4 dropout and 8
+```
+## Results
+```{r}
+results1
+```
+About a .5% accuracy increase by adding enemy team comps.
+## Predict
+```{r}
+predict(model, list("TahmKench Graves Veigar Jihn Lux", "Jayce Viego Kayle Kaisa Nami"))
+```
+## Saving
+```{r}
+save_model_tf(model, "initialModel.tf")
+```
+
+# Run Model 2
+## Results
+```{r}
+results2
+```
+
+

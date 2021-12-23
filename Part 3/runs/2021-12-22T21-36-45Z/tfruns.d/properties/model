@@ -1,0 +1,38 @@
+Model
+Model: "model_3"
+________________________________________________________________________________
+ Layer (type)             Output Shape      Param #  Connected to               
+================================================================================
+ input_7 (InputLayer)     [(None, 1)]       0        []                         
+                                                                                
+ input_8 (InputLayer)     [(None, 1)]       0        []                         
+                                                                                
+ text_vectorization_3 (Te  (None, 5)        0        ['input_7[0][0]',          
+ xtVectorization)                                     'input_8[0][0]']          
+                                                                                
+ embedding_3 (Embedding)  (None, 5, 8)      1288     ['text_vectorization_3[0][0
+                                                     ]',                        
+                                                      'text_vectorization_3[1][0
+                                                     ]']                        
+                                                                                
+ concatenate_3 (Concatena  (None, 5, 16)    0        ['embedding_3[0][0]',      
+ te)                                                  'embedding_3[1][0]']      
+                                                                                
+ global_average_pooling1d  (None, 16)       0        ['concatenate_3[0][0]']    
+ _3 (GlobalAveragePooling                                                       
+ 1D)                                                                            
+                                                                                
+ dense_7 (Dense)          (None, 16)        272      ['global_average_pooling1d_
+                                                     3[0][0]']                  
+                                                                                
+ dropout_3 (Dropout)      (None, 16)        0        ['dense_7[0][0]']          
+                                                                                
+ dense_6 (Dense)          (None, 1)         17       ['dropout_3[0][0]']        
+                                                                                
+================================================================================
+Total params: 1,577
+Trainable params: 1,577
+Non-trainable params: 0
+________________________________________________________________________________
+
+

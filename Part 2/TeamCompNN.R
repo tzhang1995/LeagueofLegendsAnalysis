@@ -1,5 +1,6 @@
 library(keras)
 library(tfruns)
+library(rsample)
 
 # Splitting Data into Training Sets
 split <- initial_split(data.NN$data.temp, prop = 4/5)
@@ -28,6 +29,10 @@ output <- input %>%
   text_vectorization() %>% 
   layer_embedding(input_dim = num_words + 1, output_dim = FLAGS$unit) %>% 
   layer_global_average_pooling_1d() %>% 
+  layer_dense(units = 3*FLAGS$unit, activation = "tanh") %>% 
+  layer_dropout(rate = FLAGS$dropout) %>% 
+  layer_dense(units = 2*FLAGS$unit) %>% 
+  layer_dropout(rate = FLAGS$dropout) %>% 
   layer_dense(units = FLAGS$unit, activation = "relu") %>% 
   layer_dropout(rate = FLAGS$dropout) %>% 
   layer_dense(units = 1, activation = "sigmoid")

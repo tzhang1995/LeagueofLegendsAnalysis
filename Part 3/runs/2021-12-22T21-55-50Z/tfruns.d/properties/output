@@ -1,0 +1,70 @@
+
+> library(keras)
+
+> library(tfruns)
+
+> library(rsample)
+
+> # Splitting Data into Training Sets
+> split <- initial_split(data.NN, prop = 4/5)
+
+> train <- training(split)
+
+> test <- testing(split)
+
+> # Vectorizatoin Layer
+> num_words <- 160
+
+> max_length <- 5
+
+> text_vectorization <- layer_text_vectorization(
++   max_tokens = num_words,
++   output_sequence_length = max_length
++ )
+
+> text_vectorization %>% 
++   adapt(data.raw$team) # Using data.raw for all teams
+
+> input_1 <- layer_input(shape = c(1), dtype = "string")
+
+> input_2 <- layer_input(shape = c(1), dtype = "string")
+
+> FLAGS <- flags(
++   flag_numeric("dropout", 0.4),
++   flag_numeric("unit", 8)
++ )
+
+> text_embedding <- layer_embedding(input_dim = num_words + 1, output_dim = FLAGS$unit)
+
+> embedding_1 <- input_1 %>% 
++   text_vectorization() %>% 
++   text_embedding()
+
+> embedding_2 <- input_2 %>% 
++   text_vectorization %>% 
++   text_embedding()
+
+> output <- layer_concatenate(c(embedding_1, embedding_2), axis=-1) %>% 
++   layer_global_average_pooling_1d() %>% 
++   layer_dense(units = 2*FLAGS$un .... [TRUNCATED] 
+
+> model <- keras_model(inputs = c(input_1, input_2), output)
+
+> model %>% 
++   compile(
++     optimizer = "adam",
++     loss = "binary_crossentropy",
++     metrics = list("accuracy")
++   )
+
+> history <- model %>% 
++   fit(
++     list(train$team_1, train$team_2),
++     as.numeric(train$win == TRUE),
++     epochs = 15,
++     batch_size = 51 .... [TRUNCATED] 
+
+> results <- model %>% 
++   evaluate(list(test$team_1, test$team_2), as.numeric(test$win == TRUE), verbose = 0)
+
+> plot(history)

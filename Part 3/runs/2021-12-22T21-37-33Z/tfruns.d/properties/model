@@ -1,0 +1,37 @@
+Model
+Model: "model"
+________________________________________________________________________________
+ Layer (type)             Output Shape      Param #  Connected to               
+================================================================================
+ input_1 (InputLayer)     [(None, 1)]       0        []                         
+                                                                                
+ input_2 (InputLayer)     [(None, 1)]       0        []                         
+                                                                                
+ text_vectorization (Text  (None, 5)        0        ['input_1[0][0]',          
+ Vectorization)                                       'input_2[0][0]']          
+                                                                                
+ embedding (Embedding)    (None, 5, 8)      1288     ['text_vectorization[0][0]'
+                                                     , 'text_vectorization[1][0]
+                                                     ']                         
+                                                                                
+ concatenate (Concatenate  (None, 5, 16)    0        ['embedding[0][0]',        
+ )                                                    'embedding[1][0]']        
+                                                                                
+ global_average_pooling1d  (None, 16)       0        ['concatenate[0][0]']      
+  (GlobalAveragePooling1D                                                       
+ )                                                                              
+                                                                                
+ dense_1 (Dense)          (None, 16)        272      ['global_average_pooling1d[
+                                                     0][0]']                    
+                                                                                
+ dropout (Dropout)        (None, 16)        0        ['dense_1[0][0]']          
+                                                                                
+ dense (Dense)            (None, 1)         17       ['dropout[0][0]']          
+                                                                                
+================================================================================
+Total params: 1,577
+Trainable params: 1,577
+Non-trainable params: 0
+________________________________________________________________________________
+
+
