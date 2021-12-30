@@ -1,0 +1,97 @@
+---
+title: "Dimensionality Reduction"
+output: html_notebook
+---
+
+# Packages and Data
+```{r}
+library(tidyverse)
+library(broom)
+library(glmnet)
+library(plotly)
+library(mclust)
+# gameInfo <- read_csv("../data/teamNamesSparse.csv")
+```
+
+## Trying PCA
+```{r}
+gameInfo.pca <- gameInfo %>%
+  select(!1:3) %>% 
+  as.matrix() %>% 
+  prcomp() 
+
+gameInfo.pca.summary <- gameInfo.pca %>% 
+  summary() 
+
+temp <- gameInfo.pca.summary$importance %>% 
+  as_tibble()
+
+as_tibble(cbind(nms = names(temp), t(temp))) %>% 
+  transmute(
+    component = str_remove(nms, "PC"),
+    component = as.integer(component),
+    sd = V2,
+    var = V3,
+    cum_var = V4
+  ) %>% 
+  plot_ly(
+    x = ~component,
+    y = ~cum_var,
+    type = "scatter",
+    mode = "markers"
+  )
+```
+Looks like we can't really throw away a non-trivial amount of component vectors.
+
+# SVD
+
+```{r}
+gameInfo.svd <- gameInfo %>%
+  select(!1:3) %>% 
+  as.matrix() %>% 
+  svd()
+```
+
+```{r}
+# gameInfo.svd
+```
+
+# Logistic Regression, no preprocessing
+```{r}
+cv.logistic <- cv.glmnet(
+  x = gameInfo %>% 
+    select(!1:3) %>% 
+    as.matrix(),
+  y = gameInfo$blue_win,
+  family = "binomial",
+  alpha = 1
+)
+logistic.fit <- glmnet(
+  x = gameInfo %>% 
+    select(!1:3) %>% 
+    as.matrix(),
+  y = gameInfo$blue_win,
+  family = "binomial",
+  alpha = 1,
+  lambda = cv.logistic$lambda.min
+  )
+
+logistic.fit$beta %>% 
+  as.matrix() %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "champion") %>% 
+  filter(s0 != 0) %>% 
+  arrange(s0)
+```
+
+# Try Expectation-Maximization
+```{r}
+gameInfo.EM <- Mclust(
+  data = gameInfo %>%
+  select(!1:3)
+)
+```
+```{r}
+summary(gameInfo.EM)
+```
+

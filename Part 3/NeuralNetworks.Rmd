@@ -2,7 +2,7 @@
 title: "More NN"
 output: html_notebook
 ---
-In Parts 1 and 2, I explored basic statistical models and a first try at a NN using an embedding process to capture to relationship between the high dimensional categorical variables (champions on a team). I will now attempt to develop a neural network which can accept both teams input and try to make a more accurate team victory classifier just based on champions. Due to the high variance nature of league of legends, I wouldn't expect such a network to be able to achieve a success of over 60%. Perhaps if there was more data of just high level gameplay (diamond+) there could be a sufficiently accurate discrimination of win probability based on champion compositions. That being said, with such a large range of skill, we should be able to identify large scale trends.
+In Parts 1 and 2, I explored basic statistical models and a first try at a NN using an embedding process to capture to relationship between the high dimensional categorical variables (champions on a team). I will now attempt to develop a neural network which can accept both teams input and try to make a more accurate team victory classifier just based on champions. Due to the high variance nature of league of legends, I wouldn't expect such a network to be able to achieve a success of over 60%. Perhaps if there was more data of just high level gameplay (diamond+) there could be a sufficiently accurate discrimination of win probability based on champion compositions. That being said, with such a large range of skill, we should be able to identify large scale trends. I will also explore an SVM classifier.
 
 # Packages
 ```{r}
@@ -11,6 +11,7 @@ library(data.table)
 library(keras)
 library(tfruns)
 library(rsample)
+library(e1071)
 ```
 
 # Load Data
@@ -43,6 +44,78 @@ data.NN.tier <- data.NN %>%
 
 data.NN.tier
 ```
+```{r}
+data.SVM.temp <- gameInfo %>% 
+  select(match, tier, championName, win) %>% 
+  group_by(match) %>% 
+  mutate(
+    team = rleid(win),
+    team = case_when(
+      team == 1  ~  "Blue",
+      team == 2  ~  "Red",
+    ),
+    championName = str_c(championName, team, sep = "_"),
+    value = 1
+  ) %>% 
+  ungroup()
+  
+
+data.SVM <- data.SVM.temp %>% 
+  distinct(match, tier, .keep_all = TRUE) %>% 
+  select(match, tier, win) %>% 
+  left_join(
+    data.SVM.temp %>% 
+      filter(team == "Blue") %>%
+      select(match, championName, team, value) %>% 
+      pivot_wider(
+        names_from = championName,
+        values_from = value
+      ) %>% 
+      select(!team) %>% 
+      replace(is.na(.), 0),
+    by = "match"
+  ) %>% 
+  left_join(
+    data.SVM.temp %>% 
+      filter(team == "Red") %>%
+      select(match, championName, team, value) %>% 
+      pivot_wider(
+        names_from = championName,
+        values_from = value
+      ) %>%
+      select(!team) %>% 
+      replace(is.na(.), 0),
+    by = "match"  
+  ) %>% 
+  rename(blue_win = win)
+
+data.SVM
+```
+# Run an SVM
+## Training and Test Data
+```{r}
+SVM.split <- initial_split(data.SVM %>% select(!match) %>% select(!tier), prop = 4/5)
+SVM.train <- training(SVM.split)
+SVM.test <- testing(SVM.split)
+```
+
+```{r}
+SVM_model <- svm(
+  x = SVM.train %>% select(!blue_win),
+  y = as.numeric(SVM.train$blue_win),
+  gamma = 1/2
+)
+```
+
+```{r}
+SVM_model
+```
+```{r}
+SVM_predict <- predict(SVM_model, SVM.test %>% select(!blue_win))
+mean(SVM_predict)
+```
+
+
 
 # Run Model 1
 ## Diagnostics
