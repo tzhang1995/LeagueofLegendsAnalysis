@@ -37,7 +37,7 @@ FLAGS <- flags(
   flag_numeric("unit", 8)
 )
 
-text_embedding <- layer_embedding(input_dim = num_words + 1, output_dim = FLAGS$unit)
+text_embedding <- layer_embedding(input_dim = num_words + 1, output_dim = 5)
 
 embedding_1 <- input_1 %>% 
   text_vectorization() %>% 
@@ -52,7 +52,7 @@ embedding_3 <- input_3 %>%
   text_embedding() 
 
 
-output <- layer_concatenate(c(embedding_1, embedding_2, embedding_3), axis=2) %>% # Need to figure out how to concatenate this properly
+output <- layer_concatenate(c(embedding_1, embedding_2, embedding_3), axis=-1) %>% # Need to figure out how to concatenate this properly
   layer_global_average_pooling_1d() %>% 
   layer_dense(units = FLAGS$unit, activation = "relu") %>% 
   layer_dropout(rate = FLAGS$dropout) %>% 
