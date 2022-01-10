@@ -227,7 +227,7 @@ matchData$accounts.raw <- data.temp$tier_div %>%
 ```
 ```{r}
 # Just retaining the summonerIds
-matchData$summonerIds <- accounts.raw %>% 
+matchData$summonerIds <- matchData$accounts.raw %>% 
   mutate(
     accounts = map(
       accounts,
@@ -295,7 +295,7 @@ head(matchData$matches)
 ## Getting match information
 ```{r}
 # splitting into two because of the api key expiration
-matchData$gameInfo.low <- matches %>% 
+matchData$gameInfo.low <- matchData$matches %>% 
   filter(tier %in% c("IRON", "BRONZE", "SILVER")) %>% 
   mutate(
     gameInfo = map(
@@ -304,7 +304,7 @@ matchData$gameInfo.low <- matches %>%
     )
   )
 
-matchData$gameInfo.high <- matches %>% 
+matchData$gameInfo.high <- matchData$matches %>% 
   filter(tier %in% c("GOLD", "PLATINUM", "DIAMOND")) %>% 
   mutate(
     gameInfo = map(

@@ -1,0 +1,244 @@
+---
+title: "Diamond Games Scraping"
+output: html_notebook
+---
+
+# Packages
+
+```{r}
+library(tidyverse)
+library(jsonlite)
+library(httr)
+```
+
+# Getting Matches
+## Empty Data Frames to Store Data
+```{r}
+data.temp <- list()
+matchData <- list()
+data.temp$division <- c("I", "II", "III", "IV")
+data.temp$pages <- 1:10
+```
+
+## Borrowing Code from Part 1
+```{r}
+RIOTAPI_FUNCTIONS <- list()
+
+GET_JSON <- function(INPUT){
+  
+  output <- GET(INPUT) # Have to use httr::GET to properly parse this url
+  
+  output$content %>% 
+    rawToChar() %>% 
+    fromJSON() %>% 
+    return()
+  
+}
+
+RIOTAPI_FUNCTIONS$GET_DIAMOND_ACCOUNTS <- function(division, page){
+  
+  Sys.sleep(1.2)
+  url <- paste0("https://na1.api.riotgames.com/lol/league/v4/entries/RANKED_SOLO_5x5/DIAMOND/", division, "?page=", page, "&api_key=", api)
+  
+  GET_JSON(url) %>% 
+    return()
+  
+}
+
+RIOTAPI_FUNCTIONS$GET_PUUID <- function(summonerId){
+  
+  Sys.sleep(1.2)
+  url <- paste0("https://na1.api.riotgames.com/lol/summoner/v4/summoners/", summonerId,  "?api_key=", api)
+  
+  GET_JSON(url) %>% 
+    return()
+  
+}
+
+RIOTAPI_FUNCTIONS$GET_HISTORY <- function(puuid){
+  
+  Sys.sleep(1.2)
+  url <- paste0("https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/", puuid, "/ids?queue=420&start=0&count=20&api_key=", api)
+  
+  GET_JSON(url) %>% 
+    return()
+  
+}
+
+RIOTAPI_FUNCTIONS$GET_MATCH <- function(matchid){
+  
+  Sys.sleep(1.2)
+  url <- paste0("https://americas.api.riotgames.com/lol/match/v5/matches/", matchid, "?api_key=", api)
+  
+  GET_JSON(url) %>% 
+    return()
+  
+}
+```
+
+## Prepare Input Table to Run Over
+```{r}
+data.temp$tier_page <- expand_grid(division = data.temp$division, page = data.temp$pages)
+
+data.temp$tier_page
+```
+
+## Execute Function
+```{r}
+# Doing this in steps because of the api query request limitations
+# First get summonerIds
+matchData$accounts.raw <- data.temp$tier_page %>%
+  mutate(
+    accounts = pmap(
+      .,
+      .f = RIOTAPI_FUNCTIONS$GET_DIAMOND_ACCOUNTS
+    )
+  )
+```
+```{r}
+# Just retaining the summonerIds
+matchData$summonerIds <- matchData$accounts.raw %>% 
+  mutate(
+    accounts = map(
+      accounts,
+      .f = function(accounts){
+        accounts %>%
+          select(summonerId) %>%
+          return()
+      }
+    )
+  ) %>% 
+  unnest(cols = accounts)
+```
+```{r}
+# Get PUUID's now, need this to get match history
+matchData$accounts <- matchData$summonerIds %>% 
+  mutate(
+    puuid = map(
+      summonerId,
+      .f = RIOTAPI_FUNCTIONS$GET_PUUID
+    ),
+    puuid = map( # Probably separate this next time just in case maybe? It might work fine with the select function
+      puuid,
+      .f = function(puuid){
+        puuid %>% 
+          as_tibble() %>% 
+          select(puuid) %>% 
+          return()
+      }
+    )
+  ) %>%
+  unnest(puuid)
+
+head(matchData$accounts)
+```
+
+## Getting Match History from puuid
+```{r}
+matchData$match_history <- matchData$accounts %>% 
+  mutate(
+    matches = map(
+      puuid,
+      .f = RIOTAPI_FUNCTIONS$GET_HISTORY
+    )
+  )
+
+head(matchData$match_history)
+```
+```{r}
+matchData$matches <- matchData$match_history %>% 
+  mutate(
+    empty = map(
+      matches,
+      .f = is_empty
+    )
+  ) %>% 
+  unnest(cols = empty) %>%
+  filter(empty == FALSE) %>% 
+  unnest(cols = matches) %>% 
+  distinct(matches, .keep_all = T) %>% 
+  select(division, match = matches)
+
+head(matchData$matches)
+```
+
+## Getting match information
+```{r}
+matchData$gameInfo.1 <- matchData$matches %>% 
+  filter(row_number() <= nrow(matchData$matches)/2) %>% 
+  mutate(
+    gameInfo = map(
+      match,
+      .f = RIOTAPI_FUNCTIONS$GET_MATCH
+    )
+  )
+
+matchData$gameInfo.2 <- matchData$matches %>% 
+  filter(row_number() > nrow(matchData$matches)/2) %>% 
+  mutate(
+    gameInfo = map(
+      match,
+      .f = RIOTAPI_FUNCTIONS$GET_MATCH
+    )
+  )
+```
+
+## Tidying up data
+```{r}
+matchData$gameInfo.raw1 <- matchData$gameInfo.1 %>% 
+  mutate(
+    version = map(
+      gameInfo,
+      .f = function(gameInfo){
+        
+        gameInfo$info$gameVersion %>% 
+          return()
+        
+      }
+    ),
+    gameInfo = map(
+      gameInfo,
+      .f = function(gameInfo){
+        
+        gameInfo$info$participants %>% 
+          return()
+        
+      }
+    )
+  ) %>% 
+  unnest(cols = c("version", "gameInfo"))
+
+matchData$gameInfo.raw2 <- matchData$gameInfo.2 %>% 
+  mutate(
+    version = map(
+      gameInfo,
+      .f = function(gameInfo){
+        
+        gameInfo$info$gameVersion %>% 
+          return()
+        
+      }
+    ),
+    gameInfo = map(
+      gameInfo,
+      .f = function(gameInfo){
+        
+        gameInfo$info$participants %>% 
+          return()
+        
+      }
+    )
+  ) %>% 
+  unnest(cols = c("version", "gameInfo"))
+
+# gameInfo <- matchData$gameInfo.raw %>% # Selecting only certain columns for simplicity
+#   select(division, version, match, assists, champExperience, champLevel, championId, championName, deaths, detectorWardsPlaced, firstBloodKill, goldEarned, goldSpent, individualPosition, item1, item2, item3, item4, item5, item6, kills, lane, role, timePlayed, totalDamageDealtToChampions, totalDamageDealt, totalTimeSpentDead, visionScore, wardsKilled, wardsPlaced, win) %>% 
+#   mutate(
+#     division = factor(division, levels = c("I", "II", "III", "IV")),
+#     individualPosition = factor(individualPosition, levels = c("UTILITY", "BOTTOM", "MIDDLE", "JUNGLE", "TOP", "Invalid")),
+#     lane = factor(lane, levels = c("BOTTOM", "MIDDLE", "JUNGLE", "TOP", "NONE")),
+#     role = factor(role, levels= c("SUPPORT", "CARRY", "NONE", "SOLO", "DUO")),
+#     timePlayed = timePlayed / 60,
+#     win = factor(win, levels = c(FALSE, TRUE))
+#   )
+```
