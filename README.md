@@ -5,7 +5,7 @@ Project detailing exploratory data analysis of League of Legends match data
 I. Part 1
   1. DataExtraction
   2. BasicStatisticalModels
-  3. ChapmionStatistics
+  3. ChampionStatistics
  
 II. Part 2
 
